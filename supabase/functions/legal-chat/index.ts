@@ -220,11 +220,37 @@ Deno.serve(async (req) => {
       )
     }
 
-    // 非流式响应：直接解析完整 JSON
-    const respData = await response.json()
-    const fullContent: string = respData?.choices?.[0]?.message?.content
-      || respData?.choices?.[0]?.delta?.content
-      || ''
+    // 兼容流式(SSE)和非流式两种返回格式
+    const rawText = await response.text()
+    let fullContent = ''
+
+    if (rawText.trim().startsWith('data:')) {
+      // 流式 SSE 格式：逐行解析 delta 内容并拼接
+      const lines = rawText.split('\n')
+      for (const line of lines) {
+        const trimmed = line.trim()
+        if (!trimmed.startsWith('data:')) continue
+        const jsonStr = trimmed.slice(5).trim()
+        if (jsonStr === '[DONE]') break
+        try {
+          const chunk = JSON.parse(jsonStr)
+          const delta = chunk?.choices?.[0]?.delta?.content
+            || chunk?.choices?.[0]?.message?.content
+            || ''
+          fullContent += delta
+        } catch { /* 跳过无效 chunk */ }
+      }
+    } else {
+      // 非流式普通 JSON 格式
+      try {
+        const respData = JSON.parse(rawText)
+        fullContent = respData?.choices?.[0]?.message?.content
+          || respData?.choices?.[0]?.delta?.content
+          || ''
+      } catch {
+        fullContent = ''
+      }
+    }
 
     return new Response(
       JSON.stringify({ content: fullContent, rag_used: ragContext.length > 0 }),

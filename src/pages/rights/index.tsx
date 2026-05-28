@@ -51,15 +51,18 @@ async function geocodeAddress(
   city?: string
 ): Promise<{ lat: number; lng: number } | null> {
   const { data, error } = await callEdgeFunction<{
-    status: number
-    result?: { location: { lat: number; lng: number }; confidence: number }
-  }>('geocoding', { body: { address, city, ret_coordtype: 'bd09ll' } })
-  if (error || !data || data.status !== 0 || !data.result?.location) return null
-  // confidence < 30 可信度过低，降级处理
-  if ((data.result.confidence ?? 100) < 30) return null
-  return data.result.location
-}
+    status: string
+    geocodes?: { location: string; level: string }[]
+  }>('geocoding', { body: { address, city } })
 
+  if (error || !data || data.status !== '1' || !data.geocodes?.length) return null
+
+  const location = data.geocodes[0].location  // 格式："lng,lat"
+  const [lng, lat] = location.split(',').map(Number)
+  if (!lng || !lat) return null
+
+  return { lat, lng }
+}
 /** 通过机构名称+城市在百度地图搜索并导航（兜底方案） */
 async function navigateByName(name: string, city: string) {
   Taro.showToast({ title: '正在定位...', icon: 'none', duration: 3000 })
@@ -102,17 +105,35 @@ interface RouteInfo {
 /** 查询单种出行方式路线 */
 async function fetchRoute(
   mode: 'driving' | 'walking' | 'transit',
-  origin: string,
-  destination: string
+  origin: string,   // 格式 "纬度,经度"（来自 getFuzzyLocation）
+  destination: string  // 格式 "纬度,经度"（来自 geocodeAddress）
 ): Promise<RouteInfo | null> {
-  const { data, error } = await callEdgeFunction<{ status: number; result?: { routes?: { distance: number; duration: number }[] } }>(
+  // 高德需要 "经度,纬度"，前端传来的是 "纬度,经度"，需要翻转
+  const flipCoord = (coord: string) => coord.split(',').reverse().join(',')
+  const amapOrigin = flipCoord(origin)
+  const amapDest = flipCoord(destination)
+
+  const { data, error } = await callEdgeFunction<{
+    status: string
+    route?: {
+      paths?: { distance: string; duration: string }[]  // driving/walking
+      transits?: { duration: string; distance: string }[]  // transit
+    }
+  }>(
     'route-direction',
-    { body: { mode, origin, destination } }
+    { body: { mode, origin: amapOrigin, destination: amapDest } }
   )
-  if (error || !data || data.status !== 0) return null
-  const route = data.result?.routes?.[0]
-  if (!route) return null
-  return { distance: route.distance, duration: route.duration }
+
+  if (error || !data || data.status !== '1') return null
+
+  // driving/walking 用 paths，transit 用 transits
+  const item = data.route?.paths?.[0] ?? data.route?.transits?.[0]
+  if (!item) return null
+
+  return {
+    distance: Number(item.distance),
+    duration: Number(item.duration),
+  }
 }
 
 function CenterCard({ center }: { center: RightsCenter }) {
@@ -397,26 +418,48 @@ export default function Rights() {
 
   useEffect(() => { loadProvinces() }, [loadProvinces])
 
-  /** 页面加载时通过 IP 自动定位，并加载当地维权机构 */
+  /** 页面加载时通过模糊定位自动定位到当地维权机构 */
   useEffect(() => {
     const autoLocate = async () => {
-      const { data, error } = await callEdgeFunction<{ province?: string; city?: string }>('ip-location', { method: 'GET' })
-      if (error || !data?.province) return // 静默失败，不影响手动操作
+      try {
+        const loc = await Taro.getFuzzyLocation({ type: 'gcj02' }).catch(() => null)
+        if (!loc) return
 
-      const { province, city } = data
-      // 并行加载省份的城市列表与机构数据
-      const [citiesData, centersData] = await Promise.all([
-        getCitiesByProvince(province),
-        getRightsCenters({ province, city: city || undefined }),
-      ])
+        const { data, error } = await callEdgeFunction<{
+          status: string
+          regeocode?: {
+            addressComponent?: {
+              province?: string
+              city?: string | string[]
+            }
+          }
+        }>('reverse-geocoding', {
+          body: { location: `${loc.longitude},${loc.latitude}` }
+        })
 
-      setProvinces(prev => prev.length > 0 ? prev : [province])
-      setCities(citiesData)
-      setSelectedProvince(province)
-      setSelectedCity(city || '')
-      setCenters(centersData)
-      // 显示城市标识（直辖市省市相同时取省即可）
-      setAutoLocCity(city || province)
+        if (error || !data || data.status !== '1') return
+
+        const component = data.regeocode?.addressComponent
+        const province = component?.province || ''
+        const city = Array.isArray(component?.city)
+          ? province
+          : (component?.city || province)
+
+        if (!province) return
+
+        const [citiesData, centersData] = await Promise.all([
+          getCitiesByProvince(province),
+          getRightsCenters({ province, city: city || undefined }),
+        ])
+        setProvinces(prev => prev.length > 0 ? prev : [province])
+        setCities(citiesData)
+        setSelectedProvince(province)
+        setSelectedCity(city || '')
+        setCenters(centersData)
+        setAutoLocCity(city || province)
+      } catch {
+        // 静默失败
+      }
     }
     autoLocate()
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
@@ -844,3 +887,4 @@ export default function Rights() {
     </div>
   )
 }
+

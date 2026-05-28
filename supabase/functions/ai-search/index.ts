@@ -1,6 +1,6 @@
 import { corsHeaders } from '../_shared/cors.ts'
 
-const AI_SEARCH_API = 'https://app-bar9rto6gwsh-api-DYJwo27V8Qya-gateway.appmiaoda.com/v2/ai_search/chat/completions'
+const AI_SEARCH_API = 'https://open.bigmodel.cn/api/paas/v4/chat/completions'
 
 interface Reference {
   id: number
@@ -40,7 +40,7 @@ Deno.serve(async (req) => {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'X-Gateway-Authorization': `Bearer ${apiKey}`,
+        'Authorization': `Bearer ${apiKey}`,
       },
       body: JSON.stringify({
         messages: [{ role: 'user', content: legalQuery }],

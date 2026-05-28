@@ -1,6 +1,6 @@
 import { corsHeaders } from '../_shared/cors.ts'
 
-const MULTIMODAL_API = 'https://app-bar9rto6gwsh-api-k93RZBjPykEa-gateway.appmiaoda.com/v2/chat/completions'
+const MULTIMODAL_API = 'https://open.bigmodel.cn/api/paas/v4/chat/completions'
 
 const SYSTEM_PROMPT = `你是一位深耕中国劳动法与民法典的资深律师，专门为大学生提供合同法律审查服务。
 
@@ -92,7 +92,7 @@ Deno.serve(async (req) => {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'X-Gateway-Authorization': `Bearer ${apiKey}`,
+        'Authorization': `Bearer ${apiKey}`,
       },
       body: JSON.stringify({ messages }),
     })

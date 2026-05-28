@@ -58,6 +58,7 @@ export function callEdgeFunction<T = unknown>(
       method,
       header: reqHeaders,
       data: reqBody,
+      timeout: 30000, // 30 秒超时
       success(res) {
         const parsed = typeof res.data === 'string'
           ? (() => { try { return JSON.parse(res.data) } catch { return res.data } })()
@@ -71,7 +72,7 @@ export function callEdgeFunction<T = unknown>(
         }
       },
       fail(err) {
-        resolve({ data: null, error: { message: err.errMsg || '网络请求失败' } })
+        resolve({ data: null, error: { message: err.errMsg || '网络请求失败' } } as CallEdgeFunctionResult<T>)
       },
     })
   })

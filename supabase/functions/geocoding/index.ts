@@ -6,8 +6,8 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const apiKey = Deno.env.get('INTEGRATIONS_API_KEY')
-    if (!apiKey) {
+    const amapKey = Deno.env.get('AMAP_KEY')
+    if (!amapKey) {
       return new Response(
         JSON.stringify({ error: '服务配置错误' }),
         { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -15,7 +15,7 @@ Deno.serve(async (req) => {
     }
 
     const body = await req.json()
-    const { address, city, ret_coordtype } = body
+    const { address, city } = body
 
     if (!address) {
       return new Response(
@@ -24,28 +24,14 @@ Deno.serve(async (req) => {
       )
     }
 
-    const params = new URLSearchParams({
-      address,
-      output: 'json',
-      ret_coordtype: ret_coordtype ?? 'bd09ll',
-    })
+    const params = new URLSearchParams({ address, key: amapKey })
     if (city) params.set('city', city)
 
     const upstream = await fetch(
-      `https://app-bar9rto6gwsh-api-GaDwZ0j3erOY-gateway.appmiaoda.com/geocoding/v3/?${params}`,
-      {
-        method: 'GET',
-        headers: {
-          'Accept': 'application/json',
-          'X-Gateway-Authorization': `Bearer ${apiKey}`,
-        },
-      }
+      `https://restapi.amap.com/v3/geocode/geo?${params}`,
+      { method: 'GET', headers: { 'Accept': 'application/json' } }
     )
 
-    if (upstream.status === 429 || upstream.status === 402) {
-      const text = await upstream.text()
-      return new Response(text, { status: upstream.status, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
-    }
     if (!upstream.ok) {
       return new Response(
         JSON.stringify({ error: `上游服务错误: ${upstream.status}` }),

@@ -1,8 +1,7 @@
 import { createClient } from 'jsr:@supabase/supabase-js@2'
 import { corsHeaders } from '../_shared/cors.ts'
 
-// 与 legal-chat 同一网关，/v2/embeddings 端点
-const EMBED_API = 'https://app-bar9rto6gwsh-api-zYkZz8qovQ1L-gateway.appmiaoda.com/v2/embeddings'
+const EMBED_API = 'https://open.bigmodel.cn/api/paas/v4/embeddings'
 
 /** 调用 Embedding API 获取文本向量 */
 async function getEmbedding(text: string, apiKey: string): Promise<number[]> {
@@ -10,12 +9,11 @@ async function getEmbedding(text: string, apiKey: string): Promise<number[]> {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'X-Gateway-Authorization': `Bearer ${apiKey}`,
+      'Authorization': `Bearer ${apiKey}`,
     },
     body: JSON.stringify({
-      model: 'text-embedding-3-small',
+      model: 'embedding-3',
       input: text,
-      dimensions: 1024, // 与数据库 vector(1024) 保持一致
     }),
   })
 

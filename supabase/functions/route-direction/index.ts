@@ -1,11 +1,10 @@
 import { corsHeaders } from '../_shared/cors.ts'
 
-// 每种出行方式对应独立的网关域名（不可复用同一域名）
 const ENDPOINTS: Record<string, string> = {
-  driving: 'https://app-bar9rto6gwsh-api-GaDwZKpJxXOY-gateway.appmiaoda.com/direction/v2/driving',
-  riding:  'https://app-bar9rto6gwsh-api-W9z3MpAdKeNL-gateway.appmiaoda.com/direction/v2/riding',
-  walking: 'https://app-bar9rto6gwsh-api-wLNdomNRn42a-gateway.appmiaoda.com/direction/v2/walking',
-  transit: 'https://app-bar9rto6gwsh-api-m9xKXQkOKZXa-gateway.appmiaoda.com/direction/v2/transit',
+  driving: 'https://restapi.amap.com/v3/direction/driving',
+  riding:  'https://restapi.amap.com/v4/direction/bicycling',
+  walking: 'https://restapi.amap.com/v3/direction/walking',
+  transit: 'https://restapi.amap.com/v3/direction/transit/integrated',
 }
 
 Deno.serve(async (req) => {
@@ -14,8 +13,8 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const apiKey = Deno.env.get('INTEGRATIONS_API_KEY')
-    if (!apiKey) {
+    const amapKey = Deno.env.get('AMAP_KEY')
+    if (!amapKey) {
       return new Response(
         JSON.stringify({ error: '服务配置错误' }),
         { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -23,7 +22,7 @@ Deno.serve(async (req) => {
     }
 
     const body = await req.json()
-    const { mode, origin, destination, extra = {} } = body
+    const { mode, origin, destination } = body
 
     if (!ENDPOINTS[mode]) {
       return new Response(
@@ -38,25 +37,13 @@ Deno.serve(async (req) => {
       )
     }
 
-    const params = new URLSearchParams({
-      origin,
-      destination,
-      output: 'json',
-      ...Object.fromEntries(Object.entries(extra).map(([k, v]) => [k, String(v)])),
-    })
+    const params = new URLSearchParams({ origin, destination, key: amapKey })
 
     const upstream = await fetch(`${ENDPOINTS[mode]}?${params}`, {
       method: 'GET',
-      headers: {
-        'Accept': 'application/json',
-        'X-Gateway-Authorization': `Bearer ${apiKey}`,
-      },
+      headers: { 'Accept': 'application/json' },
     })
 
-    if (upstream.status === 429 || upstream.status === 402) {
-      const text = await upstream.text()
-      return new Response(text, { status: upstream.status, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
-    }
     if (!upstream.ok) {
       return new Response(
         JSON.stringify({ error: `上游服务错误: ${upstream.status}` }),

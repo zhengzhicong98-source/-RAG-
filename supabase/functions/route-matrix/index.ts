@@ -1,10 +1,9 @@
 import { corsHeaders } from '../_shared/cors.ts'
 
-// 每种出行方式对应独立的网关域名
-const MATRIX_ENDPOINTS: Record<string, string> = {
-  driving: 'https://app-bar9rto6gwsh-api-6LeBrqqMqKQY-gateway.appmiaoda.com/routematrix/v2/driving',
-  riding:  'https://app-bar9rto6gwsh-api-Aa2Pq88pDANL-gateway.appmiaoda.com/routematrix/v2/riding',
-  walking: 'https://app-bar9rto6gwsh-api-qYGW2zz1MklY-gateway.appmiaoda.com/routematrix/v2/walking',
+const TYPE_MAP: Record<string, string> = {
+  driving: '0',
+  riding:  '3',
+  walking: '1',
 }
 
 Deno.serve(async (req) => {
@@ -13,8 +12,8 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const apiKey = Deno.env.get('INTEGRATIONS_API_KEY')
-    if (!apiKey) {
+    const amapKey = Deno.env.get('AMAP_KEY')
+    if (!amapKey) {
       return new Response(
         JSON.stringify({ error: '服务配置错误' }),
         { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -22,9 +21,9 @@ Deno.serve(async (req) => {
     }
 
     const body = await req.json()
-    const { mode, origins, destinations, extra = {} } = body
+    const { mode, origins, destinations } = body
 
-    if (!MATRIX_ENDPOINTS[mode]) {
+    if (!TYPE_MAP[mode]) {
       return new Response(
         JSON.stringify({ error: `无效的出行模式：${mode}，支持 driving/riding/walking` }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -43,25 +42,21 @@ Deno.serve(async (req) => {
       )
     }
 
+    // 高德距离矩阵仅支持单个 destination，取 destinations 的第一个
+    const destination = destinations[0]
+
     const params = new URLSearchParams({
       origins: origins.join('|'),
-      destinations: destinations.join('|'),
-      output: 'json',
-      ...Object.fromEntries(Object.entries(extra).map(([k, v]) => [k, String(v)])),
+      destination,
+      type: TYPE_MAP[mode],
+      key: amapKey,
     })
 
-    const upstream = await fetch(`${MATRIX_ENDPOINTS[mode]}?${params}`, {
-      method: 'GET',
-      headers: {
-        'Accept': 'application/json',
-        'X-Gateway-Authorization': `Bearer ${apiKey}`,
-      },
-    })
+    const upstream = await fetch(
+      `https://restapi.amap.com/v5/direction/distance?${params}`,
+      { method: 'GET', headers: { 'Accept': 'application/json' } }
+    )
 
-    if (upstream.status === 429 || upstream.status === 402) {
-      const text = await upstream.text()
-      return new Response(text, { status: upstream.status, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
-    }
     if (!upstream.ok) {
       return new Response(
         JSON.stringify({ error: `上游服务错误: ${upstream.status}` }),

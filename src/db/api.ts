@@ -5,27 +5,17 @@ import type { RightsCenter, ContractReview, LegalKnowledge, CasePost, CaseCatego
 
 /** 获取所有省份列表 */
 export async function getProvinces(): Promise<string[]> {
-  const { data, error } = await supabase
-    .from('rights_centers')
-    .select('province')
-    .order('province')
-
+  const { data, error } = await supabase.rpc('get_provinces')
+  console.log('getProvinces result:', JSON.stringify({ data, error }))  // 加这行
   if (error || !data) return []
-  const provinces = [...new Set(data.map((d) => d.province))]
-  return provinces
+  return data.map((d: { province: string }) => d.province)
 }
 
 /** 按省份获取城市列表 */
 export async function getCitiesByProvince(province: string): Promise<string[]> {
-  const { data, error } = await supabase
-    .from('rights_centers')
-    .select('city')
-    .eq('province', province)
-    .order('city')
-
+  const { data, error } = await supabase.rpc('get_cities_by_province', { p_province: province })
   if (error || !data) return []
-  const cities = [...new Set(data.map((d) => d.city))]
-  return cities
+  return data.map((d: { city: string }) => d.city)
 }
 
 /** 按省市和类型查询维权机构 */

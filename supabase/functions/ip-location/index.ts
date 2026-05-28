@@ -1,29 +1,22 @@
 import { corsHeaders } from '../_shared/cors.ts'
 
-// 百度 IP 定位网关端点
-const IP_API = 'https://app-bar9rto6gwsh-api-79jK62Ze2pQL-gateway.appmiaoda.com/location/ip'
-
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders })
   }
 
   try {
-    const apiKey = Deno.env.get('INTEGRATIONS_API_KEY')
-    if (!apiKey) {
+    const amapKey = Deno.env.get('AMAP_KEY')
+    if (!amapKey) {
       return new Response(
         JSON.stringify({ error: '服务配置错误' }),
         { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       )
     }
 
-    // 不传 ip 参数，默认使用请求来源 IP 定位
-    const response = await fetch(IP_API, {
+    const response = await fetch(`https://restapi.amap.com/v3/ip?key=${amapKey}`, {
       method: 'GET',
-      headers: {
-        'Accept': 'application/json',
-        'X-Gateway-Authorization': `Bearer ${apiKey}`,
-      },
+      headers: { 'Accept': 'application/json' },
     })
 
     if (!response.ok) {
@@ -32,20 +25,19 @@ Deno.serve(async (req) => {
 
     const data = await response.json()
 
-    // status !== 0 表示百度 API 返回错误
-    if (data.status !== 0) {
+    // 高德 status "1" 表示成功
+    if (data.status !== '1') {
       return new Response(
-        JSON.stringify({ error: 'IP定位失败', code: data.status }),
+        JSON.stringify({ error: 'IP定位失败', code: data.status, info: data.info }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       )
     }
 
-    const detail = data?.content?.address_detail || {}
     return new Response(
       JSON.stringify({
-        province: detail.province || '',
-        city: detail.city || '',
-        district: detail.district || '',
+        province: data.province || '',
+        city: data.city || '',
+        adcode: data.adcode || '',
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     )

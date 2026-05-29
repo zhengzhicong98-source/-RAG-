@@ -45,6 +45,21 @@
   }
 }
 
+html, body {
+  max-width: 480px;
+  margin: 0 auto;
+  min-height: 100vh;
+  background: #f5f5f5;
+}
+
+#app {
+  max-width: 480px;
+  margin: 0 auto;
+  background: #fff;
+  min-height: 100vh;
+  position: relative;
+}
+
 @layer utilities {
   /* 主色背景 */
   .bg-primary-solid {

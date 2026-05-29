@@ -34,7 +34,11 @@ export default defineConfig<'vite'>(async (merge) => {
       // 小程序场景使用微信polyfill版本supabase-js
       '@supabase/supabase-js': process.env.TARO_ENV === 'h5' ? '@supabase/supabase-js' : 'supabase-wechat-js'
     },
-    defineConstants: {},
+    defineConstants: {
+      'process.env.TARO_APP_SUPABASE_URL': JSON.stringify(process.env.TARO_APP_SUPABASE_URL || ''),
+      'process.env.TARO_APP_SUPABASE_ANON_KEY': JSON.stringify(process.env.TARO_APP_SUPABASE_ANON_KEY || ''),
+      'process.env.TARO_APP_APP_ID': JSON.stringify(process.env.TARO_APP_APP_ID || ''),
+    },
     copy: {
       patterns: [],
       options: {}

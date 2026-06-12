@@ -34,6 +34,12 @@ interface BaiduPlace {
 
 /** 导航到指定经纬度（来自百度附近搜索结果） */
 function openNavigation(place: BaiduPlace) {
+  if (process.env.TARO_ENV === 'h5') {
+    // H5 环境：直接打开高德地图网页导航
+    const url = `https://uri.amap.com/navigation?to=${place.location.lng},${place.location.lat},${encodeURIComponent(place.name)}&mode=car&callnative=1`
+    window.open(url, '_blank')
+    return
+  }
   Taro.openLocation({
     latitude: place.location.lat,
     longitude: place.location.lng,
@@ -161,15 +167,20 @@ function CenterCard({ center }: { center: RightsCenter }) {
       if (center.address) {
         const loc = await geocodeAddress(center.address, center.city || center.province || undefined)
         if (loc) {
-          await Taro.openLocation({
-            latitude: loc.lat,
-            longitude: loc.lng,
-            name: center.name,
-            address: center.address,
-            scale: 17,
-          }).catch(() => {
-            Taro.showToast({ title: '导航打开失败，请手动复制地址', icon: 'none' })
-          })
+          if (process.env.TARO_ENV === 'h5') {
+            const url = `https://uri.amap.com/navigation?to=${loc.lng},${loc.lat},${encodeURIComponent(center.name)}&mode=car&callnative=1`
+            window.open(url, '_blank')
+          } else {
+            await Taro.openLocation({
+              latitude: loc.lat,
+              longitude: loc.lng,
+              name: center.name,
+              address: center.address,
+              scale: 17,
+            }).catch(() => {
+              Taro.showToast({ title: '导航打开失败，请手动复制地址', icon: 'none' })
+            })
+          }
           return
         }
       }

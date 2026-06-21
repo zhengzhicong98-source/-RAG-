@@ -1,7 +1,7 @@
 import { useState, useCallback, useRef, useEffect } from 'react'
 import Taro, { useShareAppMessage, useShareTimeline } from '@tarojs/taro'
 import { callEdgeFunction } from '@/utils/callEdgeFunction'
-import { recordQuestion, saveConsultHistory } from '@/db/api'
+import { recordQuestion, saveConsultHistory, logAiCall, submitFeedback } from '@/db/api'
 import { useAuth } from '@/contexts/AuthContext'
 import type { ChatMessage } from '@/db/types'
 
@@ -50,7 +50,7 @@ function parseReply(content: string) {
 
 const DISCLAIMER = '本回复由AI生成，仅供参考，不构成正式法律建议。若情况紧急请咨询专业律师。'
 
-function MessageBubble({ msg, onSuggest, isLast }: { msg: ChatMessage; onSuggest?: (q: string) => void; isLast?: boolean }) {
+function MessageBubble({ msg, onSuggest, isLast, onFeedback, historyId }: { msg: ChatMessage; onSuggest?: (q: string) => void; isLast?: boolean; onFeedback?: (val: 1 | -1) => void; historyId?: string }) {
   const [expandedSection, setExpandedSection] = useState<string | null>(null)
 
   if (msg.role === 'user') {
@@ -157,6 +157,34 @@ function MessageBubble({ msg, onSuggest, isLast }: { msg: ChatMessage; onSuggest
               </div>
             </div>
           )}
+          {/* 反馈按钮 */}
+          {msg.role === 'assistant' && onFeedback && (
+            <div className="flex items-center gap-3 px-3 py-2">
+              <span className="text-xl text-muted-foreground">这个回答有帮助吗？</span>
+              <div
+                className={`flex items-center gap-1 px-3 py-1 rounded-full border transition-all active:scale-95 ${
+                  msg.feedback === 1
+                    ? 'bg-primary border-primary text-primary-foreground'
+                    : 'border-border text-muted-foreground'
+                }`}
+                onClick={() => onFeedback(1)}
+              >
+                <div className="i-mdi-thumb-up-outline text-xl" />
+                <span className="text-xl">有用</span>
+              </div>
+              <div
+                className={`flex items-center gap-1 px-3 py-1 rounded-full border transition-all active:scale-95 ${
+                  msg.feedback === -1
+                    ? 'bg-destructive border-destructive text-destructive-foreground'
+                    : 'border-border text-muted-foreground'
+                }`}
+                onClick={() => onFeedback(-1)}
+              >
+                <div className="i-mdi-thumb-down-outline text-xl" />
+                <span className="text-xl">没用</span>
+              </div>
+            </div>
+          )}
           {/* 固定免责声明 */}
           <div className="flex items-start gap-1 px-3 py-2">
             <div className="i-mdi-information-outline text-xl text-muted-foreground flex-shrink-0 mt-0.5" />
@@ -208,6 +236,7 @@ export default function Chat() {
       const anonKey = process.env.TARO_APP_SUPABASE_ANON_KEY
       const url = `${supabaseUrl}/functions/v1/legal-chat`
 
+      const startTime = Date.now()
       try {
         const response = await fetch(url, {
           method: 'POST',
@@ -275,9 +304,32 @@ export default function Chat() {
           }
         }
 
-        // 流结束后保存历史
+        // 流结束后保存历史和日志
+        const responseTimeMs = Date.now() - startTime
         if (user && fullContent) {
-          saveConsultHistory(user.id, text.trim(), fullContent, ragUsed).catch(() => {})
+          saveConsultHistory(user.id, text.trim(), fullContent, ragUsed, responseTimeMs).then(({ id }) => {
+            if (id) {
+              setMessages(prev => {
+                const updated = [...prev]
+                updated[updated.length - 1] = {
+                  ...updated[updated.length - 1],
+                  historyId: id,
+                }
+                return updated
+              })
+            }
+          }).catch(() => {})
+          logAiCall({
+            userId: user.id,
+            functionName: 'legal-chat',
+            model: 'glm-4-flash',
+            promptLength: text.length,
+            responseLength: fullContent.length,
+            responseTimeMs,
+            ragUsed,
+            ragHitCount: ragUsed ? 1 : 0,
+            success: true,
+          }).catch(() => {})
         }
 
       } catch (err) {
@@ -290,6 +342,7 @@ export default function Chat() {
     }
 
     // 小程序环境保持原有非流式逻辑
+    const startTime = Date.now()
     const { data, error } = await callEdgeFunction<{ content?: string; rag_used?: boolean }>('legal-chat', {
       body: { messages: apiMessages, mode: 'chat' },
     })
@@ -301,6 +354,7 @@ export default function Chat() {
     } else {
       const aiContent = data?.content || '抱歉，未获取到回复，请重试。'
       const ragUsed = !!data?.rag_used
+      const responseTimeMs = Date.now() - startTime
       const assistantMsg: ChatMessage = {
         role: 'assistant',
         content: aiContent,
@@ -309,7 +363,29 @@ export default function Chat() {
       }
       setMessages([...newMessages, assistantMsg])
       if (user) {
-        saveConsultHistory(user.id, text.trim(), aiContent, ragUsed).catch(() => {})
+        saveConsultHistory(user.id, text.trim(), aiContent, ragUsed, responseTimeMs).then(({ id }) => {
+          if (id) {
+            setMessages(prev => {
+              const updated = [...prev]
+              updated[updated.length - 1] = {
+                ...updated[updated.length - 1],
+                historyId: id,
+              }
+              return updated
+            })
+          }
+        }).catch(() => {})
+        logAiCall({
+          userId: user.id,
+          functionName: 'legal-chat',
+          model: 'glm-4-flash',
+          promptLength: text.length,
+          responseLength: aiContent.length,
+          responseTimeMs,
+          ragUsed,
+          ragHitCount: ragUsed ? 1 : 0,
+          success: true,
+        }).catch(() => {})
       }
     }
     setLoading(false)
@@ -366,6 +442,14 @@ export default function Chat() {
     }
     return sendChatMessage(trimmed)
   }, [searchMode, sendChatMessage, sendSearchMessage])
+
+  const handleFeedback = useCallback(async (historyId: string, feedback: 1 | -1) => {
+    await submitFeedback(historyId, feedback)
+    setMessages(prev => prev.map(m =>
+      m.historyId === historyId ? { ...m, feedback } : m
+    ))
+    Taro.showToast({ title: feedback === 1 ? '感谢反馈！' : '已记录，我们会改进', icon: 'none' })
+  }, [])
 
   const clearChat = () => {
     setMessages([])
@@ -451,6 +535,9 @@ export default function Chat() {
                 msg={msg}
                 isLast={idx === messages.length - 1}
                 onSuggest={(q) => sendMessage(q)}
+                onFeedback={msg.role === 'assistant' && msg.historyId
+                  ? (val) => handleFeedback(msg.historyId!, val)
+                  : undefined}
               />
             ))}
             {loading && (

@@ -293,14 +293,120 @@ export async function getConsultHistory(userId: string, limit = 20, offset = 0):
 }
 
 /** 保存咨询记录 */
-export async function saveConsultHistory(userId: string, question: string, answer: string, ragUsed: boolean): Promise<boolean> {
-  const { error } = await supabase.from('consult_history').insert({
-    user_id: userId,
-    question,
-    answer,
-    rag_used: ragUsed,
+export async function saveConsultHistory(
+  userId: string,
+  question: string,
+  answer: string,
+  ragUsed: boolean,
+  responseTimeMs?: number
+) {
+  const tokenEstimate = Math.ceil((question.length + answer.length) / 4)
+  const { data, error } = await supabase
+    .from('consult_history')
+    .insert({
+      user_id: userId,
+      question,
+      answer,
+      rag_used: ragUsed,
+      response_time_ms: responseTimeMs || null,
+      rag_hit_count: ragUsed ? 1 : 0,
+      token_estimate: tokenEstimate,
+    })
+    .select('id')
+    .single()
+  return { id: data?.id, error }
+}
+
+/** 提交用户对 AI 回答的反馈（1=有用，-1=没用） */
+export async function submitFeedback(historyId: string, feedback: 1 | -1) {
+  const { error } = await supabase
+    .from('consult_history')
+    .update({ feedback })
+    .eq('id', historyId)
+  return { error }
+}
+
+/** 记录 AI 调用日志 */
+export async function logAiCall(params: {
+  userId?: string
+  functionName: string
+  model: string
+  promptLength: number
+  responseLength: number
+  responseTimeMs: number
+  ragUsed: boolean
+  ragHitCount: number
+  success: boolean
+  errorMessage?: string
+}) {
+  const tokenEstimate = Math.ceil((params.promptLength + params.responseLength) / 4)
+  const { error } = await supabase.from('ai_call_logs').insert({
+    user_id: params.userId || null,
+    function_name: params.functionName,
+    model: params.model,
+    prompt_length: params.promptLength,
+    response_length: params.responseLength,
+    token_estimate: tokenEstimate,
+    response_time_ms: params.responseTimeMs,
+    rag_used: params.ragUsed,
+    rag_hit_count: params.ragHitCount,
+    success: params.success,
+    error_message: params.errorMessage || null,
   })
-  return !error
+  return { error }
+}
+
+/** 获取用户统计摘要（用于个人中心展示） */
+export async function getConsultStats(userId: string) {
+  const { data } = await supabase
+    .from('consult_history')
+    .select('feedback, response_time_ms, rag_used')
+    .eq('user_id', userId)
+
+  const total = data?.length || 0
+  const positive = data?.filter(d => d.feedback === 1).length || 0
+  const negative = data?.filter(d => d.feedback === -1).length || 0
+  const avgResponseTime = data?.reduce((sum, d) => sum + (d.response_time_ms || 0), 0) / (total || 1)
+  const ragHitRate = data?.filter(d => d.rag_used).length / (total || 1)
+
+  return { total, positive, negative, avgResponseTime: Math.round(avgResponseTime), ragHitRate }
+}
+
+/** 获取全局统计数据（管理员看板） */
+export async function getAdminStats() {
+  const [{ data: consultData }, { data: logData }] = await Promise.all([
+    supabase.from('consult_history').select('feedback, response_time_ms, rag_used'),
+    supabase.from('ai_call_logs').select('*').order('created_at', { ascending: false }).limit(20),
+  ])
+
+  const total = consultData?.length || 0
+  const positive = consultData?.filter(d => d.feedback === 1).length || 0
+  const negative = consultData?.filter(d => d.feedback === -1).length || 0
+  const feedbackTotal = positive + negative
+  const avgResponseTime = total > 0
+    ? Math.round(consultData?.reduce((sum, d) => sum + (d.response_time_ms || 0), 0) / total)
+    : 0
+  const ragHitRate = total > 0
+    ? consultData?.filter(d => d.rag_used).length / total
+    : 0
+
+  return {
+    total,
+    positive,
+    negative,
+    feedbackTotal,
+    avgResponseTime,
+    ragHitRate,
+    recentLogs: (logData || []) as Array<{
+      id: string
+      function_name: string
+      model: string
+      response_time_ms: number
+      success: boolean
+      error_message: string | null
+      created_at: string
+    }>,
+  }
 }
 
 /** 删除咨询记录 */

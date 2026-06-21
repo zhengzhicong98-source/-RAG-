@@ -45,6 +45,8 @@ export interface ChatMessage {
   content: string
   timestamp: number
   ragUsed?: boolean
+  historyId?: string
+  feedback?: 1 | -1 | null
 }
 
 // 法律咨询回复结构
@@ -133,6 +135,10 @@ export interface ConsultHistory {
   question: string
   answer: string
   rag_used: boolean
+  feedback?: 1 | -1 | null
+  response_time_ms?: number
+  rag_hit_count?: number
+  token_estimate?: number
   created_at: string
 }
 

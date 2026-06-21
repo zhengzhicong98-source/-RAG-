@@ -309,6 +309,7 @@ export default function Chat() {
 
         // 流结束后保存历史和日志
         const responseTimeMs = Date.now() - startTime
+        console.log('[debug] user:', user, 'fullContent length:', fullContent.length)
         if (user && fullContent) {
           try {
             const { id: historyId, error: saveError } = await saveConsultHistory(user.id, text.trim(), fullContent, ragUsed, responseTimeMs)

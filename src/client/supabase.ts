@@ -58,8 +58,24 @@ export const customFetch: typeof fetch = async (url: string, options: RequestIni
         resolve({
           ok: res.statusCode >= 200 && res.statusCode < 300,
           status: res.statusCode,
-          json: async () => res.data,
-          text: async () => JSON.stringify(res.data),
+          json: async () => {
+            // BUG FIX 2026/06/22: 修复 json() 方法，需要将字符串解析为 JSON 对象
+            if (typeof res.data === 'string') {
+              try {
+                return JSON.parse(res.data);
+              } catch {
+                return res.data;
+              }
+            }
+            return res.data;
+          },
+          text: async () => {
+            // BUG FIX 2026/06/22: 修复 text() 方法，直接返回字符串而不是双重序列化
+            if (typeof res.data === 'string') {
+              return res.data;
+            }
+            return JSON.stringify(res.data);
+          },
           data: res.data,
           headers: {
             get: (key: string) => {

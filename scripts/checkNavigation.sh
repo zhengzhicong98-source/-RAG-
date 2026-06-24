@@ -1,5 +1,10 @@
 #!/bin/bash
 
+if ! command -v ast-grep &> /dev/null; then
+  echo "[skip] ast-grep not installed, skipping navigation check"
+  exit 0
+fi
+
 scan_result=$(ast-grep scan --rule .rules/navigateTo.yml)
 
 # If no scan results, exit early

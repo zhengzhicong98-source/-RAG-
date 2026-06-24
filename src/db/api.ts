@@ -456,3 +456,78 @@ export async function getUserStats(userId: string): Promise<{ consultCount: numb
     caseCount: caseRes.count || 0,
   }
 }
+
+// ==================== 通知 ====================
+
+export async function getNotifications(userId: string, limit = 20): Promise<{ id: string; type: string; title: string; body: string; is_read: boolean; created_at: string }[]> {
+  const { data, error } = await supabase.from('notifications').select('id,type,title,body,is_read,created_at').eq('user_id', userId).order('created_at', { ascending: false }).limit(limit)
+  if (error || !data) return []
+  return data
+}
+
+export async function markNotifRead(ids: string[]): Promise<boolean> {
+  const { error } = await supabase.from('notifications').update({ is_read: true }).in('id', ids)
+  return !error
+}
+
+export async function getUnreadCount(userId: string): Promise<number> {
+  const { data, error } = await supabase.rpc('get_unread_count', { uid: userId })
+  if (error || data == null) return 0
+  return Number(data)
+}
+
+// ==================== 法律法规原文库 ====================
+
+export async function searchLaws(query: string, limit = 50): Promise<{ id: string; title: string; law_name: string; chapter: string; article_number: string; content: string }[]> {
+  if (!query.trim()) return getLawsList(limit)
+  const { data, error } = await supabase.from('laws_fulltext').select('id,title,law_name,chapter,article_number,content').or(`title.ilike.%${query}%,content.ilike.%${query}%,law_name.ilike.%${query}%`).limit(limit)
+  if (error || !data) return []
+  return data
+}
+
+export async function getLawsList(limit = 50): Promise<{ id: string; title: string; law_name: string; chapter: string; article_number: string; content: string }[]> {
+  const { data, error } = await supabase.from('laws_fulltext').select('id,title,law_name,chapter,article_number,content').order('law_name').order('article_number').limit(limit)
+  if (error || !data) return []
+  return data
+}
+
+// ==================== 律师 ====================
+
+export async function getLawyers(params?: { city?: string; specialty?: string }): Promise<{ id: string; name: string; title: string; firm: string; specialties: string[]; city: string; phone: string; description: string; avatar_url: string; consultation_fee: number }[]> {
+  let query = supabase.from('lawyers').select('*').order('is_verified', { ascending: false }).limit(30)
+  if (params?.city) query = query.eq('city', params.city)
+  if (params?.specialty) query = query.contains('specialties', [params.specialty])
+  const { data, error } = await query
+  if (error || !data) return []
+  return data
+}
+
+// ==================== 维权追踪 ====================
+
+export async function getRightsCases(userId: string): Promise<{ id: string; title: string; category: string; status: string; description: string; created_at: string; updated_at: string }[]> {
+  const { data, error } = await supabase.from('rights_cases').select('*').eq('user_id', userId).order('updated_at', { ascending: false }).limit(20)
+  if (error || !data) return []
+  return data
+}
+
+export async function createRightsCase(params: { user_id: string; title: string; category: string; description: string }): Promise<string | null> {
+  const { data, error } = await supabase.from('rights_cases').insert(params).select('id').single()
+  if (error || !data) return null
+  return data.id
+}
+
+export async function updateRightsCaseStatus(id: string, status: string): Promise<boolean> {
+  const { error } = await supabase.from('rights_cases').update({ status, updated_at: new Date().toISOString() }).eq('id', id)
+  return !error
+}
+
+export async function getRightsTimeline(caseId: string): Promise<{ id: string; title: string; content: string; node_date: string; is_completed: boolean }[]> {
+  const { data, error } = await supabase.from('rights_timeline').select('*').eq('case_id', caseId).order('node_date')
+  if (error || !data) return []
+  return data
+}
+
+export async function addTimelineNode(params: { case_id: string; title: string; content: string; is_completed?: boolean }): Promise<boolean> {
+  const { error } = await supabase.from('rights_timeline').insert(params)
+  return !error
+}

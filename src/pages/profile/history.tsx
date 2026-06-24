@@ -12,13 +12,26 @@ function formatTime(iso: string): string {
   return `${d.getMonth() + 1}月${d.getDate()}日 ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
 }
 
+/** 生成咨询记录导出文本 */
+function buildExportText(records: ConsultHistory[]): string {
+  const header = `法律助手 - 咨询记录导出\n导出时间：${new Date().toLocaleString('zh-CN')}\n共 ${records.length} 条记录\n${'═'.repeat(30)}\n\n`
+  const body = records.map((r, i) => {
+    const time = formatTime(r.created_at)
+    const ragLabel = r.rag_used ? ' [已引用法条]' : ''
+    return `【${i + 1}】${time}${ragLabel}\nQ: ${r.question}\nA: ${r.answer}\n${'─'.repeat(20)}`
+  }).join('\n\n')
+  return header + body
+}
+
 function HistoryPage() {
   const { user } = useAuth()
   const [records, setRecords] = useState<ConsultHistory[]>([])
+  const [allRecords, setAllRecords] = useState<ConsultHistory[]>([]) // 全量用于导出
   const [expandedId, setExpandedId] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const [hasMore, setHasMore] = useState(true)
   const [offset, setOffset] = useState(0)
+  const [exporting, setExporting] = useState(false)
 
   const loadData = useCallback(async (reset = false) => {
     if (!user) return
@@ -38,6 +51,12 @@ function HistoryPage() {
 
   useEffect(() => { loadData(true) }, [user])
 
+  // 加载全量记录用于导出
+  useEffect(() => {
+    if (!user) return
+    getConsultHistory(user.id, 200, 0).then(setAllRecords)
+  }, [user])
+
   useReachBottom(() => {
     if (!loading && hasMore) loadData(false)
   })
@@ -53,17 +72,61 @@ function HistoryPage() {
         const ok = await deleteConsultHistory(id)
         if (ok) {
           setRecords(prev => prev.filter(r => r.id !== id))
+          setAllRecords(prev => prev.filter(r => r.id !== id))
           Taro.showToast({ title: '已删除', icon: 'success' })
         }
       },
     })
   }
 
+  const handleExport = async () => {
+    if (allRecords.length === 0) {
+      Taro.showToast({ title: '暂无记录可导出', icon: 'none' })
+      return
+    }
+    setExporting(true)
+    try {
+      const text = buildExportText(allRecords)
+      if (Taro.getEnv() === Taro.ENV_TYPE.WEB) {
+        // H5: 下载为文本文件
+        const blob = new Blob([text], { type: 'text/plain;charset=utf-8' })
+        const url = URL.createObjectURL(blob)
+        const a = document.createElement('a')
+        a.href = url; a.download = `法律助手咨询记录_${new Date().toISOString().slice(0, 10)}.txt`; a.click()
+        URL.revokeObjectURL(url)
+      } else {
+        // 小程序: 复制到剪贴板
+        await Taro.setClipboardData({ data: text })
+        Taro.showModal({
+          title: '导出成功',
+          content: '咨询记录已复制到剪贴板，可粘贴到备忘录或发送给朋友保存。',
+          showCancel: false,
+        })
+      }
+    } catch {
+      Taro.showToast({ title: '导出失败', icon: 'none' })
+    } finally {
+      setExporting(false)
+    }
+  }
+
   return (
     <div className="min-h-screen bg-background pb-8">
-      <div className="flex items-center gap-2 px-4 py-3 bg-card border-b border-border">
-        <div className="i-mdi-arrow-left text-2xl text-foreground" onClick={() => Taro.navigateBack()} />
-        <span className="text-2xl font-semibold text-foreground">我的咨询记录</span>
+      <div className="flex items-center justify-between px-4 py-3 bg-card border-b border-border">
+        <div className="flex items-center gap-2">
+          <div className="i-mdi-arrow-left text-2xl text-foreground" onClick={() => Taro.navigateBack()} />
+          <span className="text-2xl font-semibold text-foreground">我的咨询记录</span>
+        </div>
+        {allRecords.length > 0 && (
+          <button type="button"
+            className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-secondary text-primary text-xl"
+            onClick={handleExport}
+            disabled={exporting}
+          >
+            <div className={`text-xl ${exporting ? 'i-mdi-loading animate-spin' : 'i-mdi-download-outline'}`} />
+            <span>{exporting ? '导出中' : '导出'}</span>
+          </button>
+        )}
       </div>
 
       <div className="px-4 pt-4">
@@ -77,7 +140,6 @@ function HistoryPage() {
           <div className="flex flex-col gap-3">
             {records.map(record => (
               <div key={record.id} className="bg-card rounded-xl border border-border overflow-hidden">
-                {/* 问题行 */}
                 <div
                   className="flex items-start gap-3 px-4 py-3 active:opacity-70 transition-opacity"
                   onClick={() => setExpandedId(expandedId === record.id ? null : record.id)}
@@ -93,15 +155,10 @@ function HistoryPage() {
                   </div>
                   <div className={`i-mdi-chevron-down text-2xl text-muted-foreground transition-transform flex-shrink-0 mt-1 ${expandedId === record.id ? 'rotate-180' : ''}`} />
                 </div>
-
-                {/* 展开：AI 回答 */}
                 {expandedId === record.id && (
                   <div className="px-4 pb-3 border-t border-border">
                     <p className="text-xl text-muted-foreground leading-relaxed mt-3 whitespace-pre-line line-clamp-6">{record.answer}</p>
-                    <div
-                      className="flex items-center gap-1 mt-3 text-xl text-destructive"
-                      onClick={() => handleDelete(record.id)}
-                    >
+                    <div className="flex items-center gap-1 mt-3 text-xl text-destructive" onClick={() => handleDelete(record.id)}>
                       <div className="i-mdi-trash-can-outline text-xl" />
                       <span>删除记录</span>
                     </div>
@@ -109,7 +166,6 @@ function HistoryPage() {
                 )}
               </div>
             ))}
-
             {loading && (
               <div className="text-center py-4 text-muted-foreground text-xl">
                 <div className="i-mdi-loading animate-spin inline-block mr-2" />加载中...

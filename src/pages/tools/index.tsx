@@ -21,7 +21,10 @@ const toolGroups = [
     title: '法律资源',
     items: [
       { icon: 'i-mdi-bookshelf', title: '法律知识库', desc: '浏览劳动法、租房、消费等法律法规原文', path: '/pages/knowledge/index' },
-      { icon: 'i-mdi-map-marker-outline', title: '维权导航', desc: '全国劳动仲裁、消协、法援中心', path: '/pages/rights/index' },
+      { icon: 'i-mdi-book-open-outline', title: '法律法规原文库', desc: '《劳动法》《劳动合同法》《民法典》全文检索', path: '/pages/laws/index' },
+      { icon: 'i-mdi-account-tie-outline', title: '律师在线咨询', desc: '按专业领域和城市查找执业律师', path: '/pages/lawyers/index' },
+      { icon: 'i-mdi-map-marker-outline', title: '维权导航', desc: '全国6类维权机构，含导航和路线', path: '/pages/rights/index' },
+      { icon: 'i-mdi-timeline-text-outline', title: '维权进度追踪', desc: '记录维权过程，追踪投诉→调解→仲裁进度', path: '/pages/rights/track' },
       { icon: 'i-mdi-clipboard-check-outline', title: '证据采集向导', desc: '勾选已有证据，AI提示补充方向', path: '/pages/evidence/index' },
     ],
   },

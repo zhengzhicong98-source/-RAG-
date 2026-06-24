@@ -17,6 +17,10 @@ const pages = [
   'pages/profile/history',
   'pages/profile/saved',
   'pages/knowledge/index',
+  'pages/notifications/index',
+  'pages/laws/index',
+  'pages/lawyers/index',
+  'pages/rights/track',
 ]
 
 export default defineAppConfig({

@@ -1,0 +1,1 @@
+export default definePageConfig({ navigationBarTitleText: '法律法规原文库' })

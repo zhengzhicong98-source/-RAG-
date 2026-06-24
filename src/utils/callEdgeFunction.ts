@@ -4,6 +4,7 @@ interface CallEdgeFunctionOptions {
   body?: unknown
   method?: 'GET' | 'POST' | 'PUT' | 'DELETE'
   headers?: Record<string, string>
+  timeout?: number
 }
 
 interface CallEdgeFunctionResult<T = unknown> {
@@ -23,7 +24,7 @@ export function callEdgeFunction<T = unknown>(
   functionName: string,
   options: CallEdgeFunctionOptions = {}
 ): Promise<CallEdgeFunctionResult<T>> {
-  const { body, method = 'POST', headers = {} } = options
+  const { body, method = 'POST', headers = {}, timeout = 30000 } = options
   const url = `${process.env.TARO_APP_SUPABASE_URL}/functions/v1/${functionName}`
   const anonKey = process.env.TARO_APP_SUPABASE_ANON_KEY || ''
   const reqHeaders: Record<string, string> = {
@@ -60,7 +61,7 @@ export function callEdgeFunction<T = unknown>(
       method,
       header: reqHeaders,
       data: reqBodyForTaro,
-      timeout: 30000, // 30 秒超时
+      timeout,
       success(res) {
         const parsed = typeof res.data === 'string'
           ? (() => { try { return JSON.parse(res.data) } catch { return res.data } })()

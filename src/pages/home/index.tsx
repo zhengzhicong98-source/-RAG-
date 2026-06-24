@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import Taro, { useShareAppMessage, useShareTimeline } from '@tarojs/taro'
 import { Swiper, SwiperItem } from '@tarojs/components'
 import { callEdgeFunction } from '@/utils/callEdgeFunction'
-import { getWeeklyHotQuestions } from '@/db/api'
+import { getWeeklyHotQuestions, getConsultHistory, getUnreadCount } from '@/db/api'
 import { useAuth } from '@/contexts/AuthContext'
 import type { QuestionStat } from '@/db/types'
 
@@ -94,6 +94,8 @@ export default function Home() {
   /** 精确到区级的位置文字，如"海淀区"；成功后展示「城市·区」组合 */
   const [currentDistrict, setCurrentDistrict] = useState('')
   const [hotQuestions, setHotQuestions] = useState<QuestionStat[]>([])
+  const [recommended, setRecommended] = useState<string[]>([])
+  const [unread, setUnread] = useState(0)
 
   // 1. IP 定位（快速、无需授权）
   useEffect(() => {
@@ -138,6 +140,37 @@ export default function Home() {
     getWeeklyHotQuestions().then(data => setHotQuestions(data)).catch(() => {})
   }, [])
 
+  // 4. 未读通知计数
+  useEffect(() => {
+    if (!user) { setUnread(0); return }
+    getUnreadCount(user.id).then(setUnread).catch(() => {})
+  }, [user])
+
+  // 5. 个性化推荐：基于历史咨询提取高频关键词作为推荐
+  useEffect(() => {
+    if (!user) { setRecommended([]); return }
+    getConsultHistory(user.id, 10, 0).then(history => {
+      if (history.length === 0) return
+      const keywords = ['租房', '押金', '合同', '试用期', '工资', '加班', '离职', '赔偿', '退款', '投诉', '仲裁', '起诉']
+      const scored = keywords.map(kw => {
+        const count = history.filter(h => h.question.includes(kw)).length
+        return { kw, count }
+      }).filter(s => s.count > 0).sort((a, b) => b.count - a.count).slice(0, 5)
+      if (scored.length > 0) {
+        const recs = scored.map(s => {
+          if (s.kw === '租房' || s.kw === '押金') return '房东不退押金怎么办？'
+          if (s.kw === '合同') return '签合同时要注意哪些条款？'
+          if (s.kw === '试用期' || s.kw === '离职') return '试用期被辞退有赔偿吗？'
+          if (s.kw === '工资' || s.kw === '加班') return '加班费怎么计算？'
+          if (s.kw === '赔偿' || s.kw === '仲裁' || s.kw === '起诉') return '怎么申请劳动仲裁？'
+          if (s.kw === '退款' || s.kw === '投诉') return '买到假货如何维权？'
+          return `${s.kw}相关问题`
+        }).filter((v, i, a) => a.indexOf(v) === i)
+        setRecommended(recs)
+      }
+    }).catch(() => {})
+  }, [user])
+
   const navigate = (path: string) => {
     // TabBar 页面必须用 switchTab，非 TabBar 页面用 navigateTo
     if (TAB_BAR_PATHS.includes(path)) {
@@ -167,17 +200,19 @@ export default function Home() {
               </div>
             ) : null}
             {/* 个人中心入口 */}
-            <div
-              className="flex items-center justify-center w-9 h-9 rounded-full bg-white/20 active:opacity-70 transition-opacity"
+            <div className="relative"
               onClick={() => {
-                if (user) {
-                  Taro.navigateTo({ url: '/pages/profile/index' })
-                } else {
-                  Taro.navigateTo({ url: '/pages/login/index' })
-                }
-              }}
-            >
-              <div className="i-mdi-account-outline text-2xl text-primary-foreground" />
+                if (user) Taro.navigateTo({ url: '/pages/profile/index' })
+                else Taro.navigateTo({ url: '/pages/login/index' })
+              }}>
+              <div className="flex items-center justify-center w-9 h-9 rounded-full bg-white/20 active:opacity-70 transition-opacity">
+                <div className="i-mdi-account-outline text-2xl text-primary-foreground" />
+              </div>
+              {unread > 0 && (
+                <div className="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-red-500 flex items-center justify-center">
+                  <span className="text-xs text-white font-bold">{unread > 9 ? '9+' : unread}</span>
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -230,6 +265,35 @@ export default function Home() {
           </div>
         </div>
       </div>
+
+      {/* 为你推荐 — 基于咨询历史 */}
+      {recommended.length > 0 && (
+        <div className="px-4 mt-4">
+          <div className="bg-card rounded-2xl shadow-sm p-4">
+            <div className="flex items-center gap-2 mb-3">
+              <div className="i-mdi-star-outline text-2xl text-amber-500" />
+              <p className="text-xl font-semibold text-foreground">为你推荐</p>
+              <span className="text-base text-muted-foreground">基于你的咨询历史</span>
+            </div>
+            <div className="flex flex-col gap-2">
+              {recommended.map((q, i) => (
+                <div key={i}
+                  className="flex items-center gap-3 py-2 border-b border-border last:border-0 active:opacity-70 transition-opacity"
+                  onClick={() => {
+                    Taro.setStorageSync('consult_prefill', q)
+                    Taro.switchTab({ url: '/pages/consult/index' })
+                  }}>
+                  <div className={`w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 ${i === 0 ? 'bg-amber-100' : 'bg-secondary'}`}>
+                    <span className={`text-base font-bold ${i === 0 ? 'text-amber-600' : 'text-muted-foreground'}`}>{i + 1}</span>
+                  </div>
+                  <p className="text-xl text-foreground leading-snug flex-1">{q}</p>
+                  <div className="i-mdi-arrow-right text-xl text-muted-foreground flex-shrink-0" />
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* 本周热点问题 */}
       {hotQuestions.length > 0 && (

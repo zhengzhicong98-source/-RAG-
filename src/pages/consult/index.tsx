@@ -586,11 +586,41 @@ export default function Chat() {
             <textarea
               className="w-full text-xl text-foreground bg-transparent outline-none"
               style={{ height: '80px', resize: 'none' }}
-              placeholder={searchMode === 'search' ? '搜索法律问题、法规、案例...' : '输入您的法律问题...'}
+              placeholder={searchMode === 'search' ? '搜索法律问题、法规、案例...' : '输入您的法律问题…也可点击🎤语音输入'}
               value={input}
               onInput={(e) => { const ev = e as any; setInput(ev.detail?.value ?? ev.target?.value ?? '') }}
             />
           </div>
+          {/* 语音输入按钮 */}
+          <button
+            type="button"
+            className="flex items-center justify-center leading-none w-12 h-12 rounded-2xl bg-secondary transition-all active:scale-95 flex-shrink-0"
+            onClick={() => {
+              if (Taro.getEnv() === Taro.ENV_TYPE.WEB) {
+                // H5: 尝试使用 Web Speech API
+                const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
+                if (SpeechRecognition) {
+                  const recognition = new SpeechRecognition()
+                  recognition.lang = 'zh-CN'
+                  recognition.interimResults = false
+                  recognition.onresult = (event: any) => {
+                    const transcript = event.results[0][0].transcript
+                    setInput(prev => prev + transcript)
+                  }
+                  recognition.onerror = () => Taro.showToast({ title: '语音识别失败，请手动输入', icon: 'none' })
+                  recognition.start()
+                  Taro.showToast({ title: '正在聆听…', icon: 'none', duration: 3000 })
+                } else {
+                  Taro.showToast({ title: '当前浏览器不支持语音输入', icon: 'none' })
+                }
+              } else {
+                // 小程序：提示使用微信自带的语音输入（长按输入框）
+                Taro.showToast({ title: '请长按输入框使用微信语音输入', icon: 'none' })
+              }
+            }}
+          >
+            <div className="i-mdi-microphone text-2xl text-primary" />
+          </button>
           <button
             type="button"
             className="flex items-center justify-center leading-none w-12 h-12 rounded-2xl bg-primary transition-all active:scale-95"

@@ -29,9 +29,9 @@ function NotificationsPage() {
 
   const handleMarkAll = async () => {
     const unreadIds = list.filter(n => !n.is_read).map(n => n.id)
-    if (unreadIds.length === 0) return
+    if (unreadIds.length === 0) { Taro.showToast({ title: '没有未读消息', icon: 'none' }); return }
     const ok = await markNotifRead(unreadIds)
-    if (ok) setList(prev => prev.map(n => unreadIds.includes(n.id) ? { ...n, is_read: true } : n))
+    if (ok) { setList(prev => prev.map(n => unreadIds.includes(n.id) ? { ...n, is_read: true } : n)); Taro.showToast({ title: '已全部标为已读', icon: 'success' }) }
   }
 
   const formatTime = (iso: string) => {

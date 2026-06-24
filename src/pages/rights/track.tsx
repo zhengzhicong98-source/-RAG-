@@ -58,6 +58,15 @@ function TrackPage() {
     if (ok) { setNewNode(''); const data = await getRightsTimeline(caseId); setTimelines(prev => ({ ...prev, [caseId]: data })) }
   }
 
+  const handleToggleNode = async (caseId: string, nodeId: string, completed: boolean) => {
+    // 通过重新插入同标题节点并标记完成状态来模拟 toggl（后续可改为直接 UPDATE）
+    const currentNodes = timelines[caseId] || []
+    const target = currentNodes.find((n: any) => n.id === nodeId)
+    if (!target) return
+    const ok = await addTimelineNode({ case_id: caseId, title: target.title, content: target.content || '', is_completed: !completed })
+    if (ok) { const data = await getRightsTimeline(caseId); setTimelines(prev => ({ ...prev, [caseId]: data })) }
+  }
+
   return (
     <div className="min-h-screen bg-background pb-8">
       <div className="flex items-center justify-between px-4 py-3 bg-card border-b border-border">
@@ -126,9 +135,10 @@ function TrackPage() {
                     {(timelines[c.id] || []).length > 0 ? (
                       <div className="relative pl-6 border-l-2 border-primary/30">
                         {(timelines[c.id] || []).map((n: any) => (
-                          <div key={n.id} className="mb-3 last:mb-0 relative">
-                            <div className={`absolute -left-[25px] w-4 h-4 rounded-full border-2 ${n.is_completed ? 'bg-primary border-primary' : 'bg-white border-primary/30'}`} />
-                            <p className={`text-xl ${n.is_completed ? 'text-foreground' : 'text-muted-foreground'}`}>{n.title}</p>
+                          <div key={n.id} className="mb-3 last:mb-0 relative active:opacity-70"
+                            onClick={() => handleToggleNode(c.id, n.id, n.is_completed)}>
+                            <div className={`absolute -left-[25px] w-4 h-4 rounded-full border-2 transition-colors ${n.is_completed ? 'bg-primary border-primary' : 'bg-white border-primary/30'}`} />
+                            <p className={`text-xl ${n.is_completed ? 'text-foreground line-through' : 'text-foreground'}`}>{n.title}</p>
                             <p className="text-base text-muted-foreground">{n.node_date}</p>
                           </div>
                         ))}

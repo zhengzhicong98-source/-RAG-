@@ -85,6 +85,7 @@ export default function Plaza() {
   useEffect(() => {
     setPosts([])
     setOffset(0)
+    offsetRef.current = 0
     setHasMore(true)
     fetchPosts(true)
   }, [activeTab])

@@ -11,8 +11,10 @@ CREATE TABLE IF NOT EXISTS laws_fulltext (
   effective_at date,
   created_at timestamptz DEFAULT now()
 );
--- 使用 pg_trgm 三元组索引支持 ilike 模糊搜索（需先启用 pg_trgm 扩展）
--- CREATE INDEX IF NOT EXISTS idx_laws_fulltext_trgm ON laws_fulltext USING gin(title gin_trgm_ops);
+-- 启用 pg_trgm 扩展并创建三元组索引支持 ilike 模糊搜索
+CREATE EXTENSION IF NOT EXISTS pg_trgm;
+CREATE INDEX IF NOT EXISTS idx_laws_fulltext_trgm_title ON laws_fulltext USING gin(title gin_trgm_ops);
+CREATE INDEX IF NOT EXISTS idx_laws_fulltext_trgm_content ON laws_fulltext USING gin(content gin_trgm_ops);
 
 
 ALTER TABLE laws_fulltext ENABLE ROW LEVEL SECURITY;

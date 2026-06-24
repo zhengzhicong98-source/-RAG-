@@ -140,10 +140,12 @@ export default function Home() {
     getWeeklyHotQuestions().then(data => setHotQuestions(data)).catch(() => {})
   }, [])
 
-  // 4. 未读通知计数
+  // 4. 未读通知计数（每 30s 轮询）
   useEffect(() => {
     if (!user) { setUnread(0); return }
     getUnreadCount(user.id).then(setUnread).catch(() => {})
+    const timer = setInterval(() => getUnreadCount(user.id).then(setUnread).catch(() => {}), 30000)
+    return () => clearInterval(timer)
   }, [user])
 
   // 5. 个性化推荐：基于历史咨询提取高频关键词作为推荐

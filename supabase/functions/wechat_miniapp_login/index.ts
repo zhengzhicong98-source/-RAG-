@@ -6,11 +6,27 @@ const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
 const supabaseAdmin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
 
+// 简易 IP 频率限制：每 IP 每分钟最多 5 次
+const rateLimit = new Map<string, number[]>()
+const RATE_WINDOW_MS = 60_000
+const RATE_MAX = 5
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return handleOptions()
 
   try {
     logRequest(req, 'wechat-login')
+
+    // 频率限制检查
+    const ip = req.headers.get('x-forwarded-for') || req.headers.get('cf-connecting-ip') || 'unknown'
+    const now = Date.now()
+    const timestamps = rateLimit.get(ip) || []
+    const recent = timestamps.filter(t => now - t < RATE_WINDOW_MS)
+    if (recent.length >= RATE_MAX) {
+      return err('操作过于频繁，请稍后再试', 429)
+    }
+    recent.push(now)
+    rateLimit.set(ip, recent)
 
     const { code } = await req.json().catch(() => ({}))
     if (!code) return err('缺少code', 400)

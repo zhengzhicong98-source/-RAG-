@@ -162,7 +162,7 @@ export default function Contract() {
         body = { image_urls: imageUrls, file_name: `${files.length}份合同文件` }
       }
 
-      const { data, error } = await callEdgeFunction<{ result: ContractReviewResult & { differences?: unknown[]; risks_a?: unknown[]; risks_b?: unknown[] } }>('contract-review', { body })
+      const { data, error } = await callEdgeFunction<{ result: ContractReviewResult & { differences?: unknown[]; risks_a?: unknown[]; risks_b?: unknown[] } }>('contract-review', { body, timeout: 90000 })
       if (error) {
         console.error('合同审查错误:', error.message)
         Taro.showToast({ title: '审查失败，请稍后重试', icon: 'none' })
@@ -193,8 +193,8 @@ export default function Contract() {
       // 即时销毁：分析完成后删除云端文件
       const storagePaths = [...files.map(f => f.storagePath), ...(compareMode ? filesB.map(f => f.storagePath) : [])].filter(Boolean)
       if (storagePaths.length > 0) {
-        await supabase.storage.from('contracts').remove(storagePaths)
-        setFilesDestroyed(true)
+        const { error: removeError } = await supabase.storage.from('contracts').remove(storagePaths)
+        if (!removeError) setFilesDestroyed(true)
       }
     } catch {
       Taro.showToast({ title: '网络异常，请稍后重试', icon: 'none' })

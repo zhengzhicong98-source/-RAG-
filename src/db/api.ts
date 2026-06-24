@@ -190,8 +190,8 @@ export async function getUserCaseReactions(
   userId: string
 ): Promise<{ liked: boolean; saved: boolean }> {
   const [{ data: likeData }, { data: saveData }] = await Promise.all([
-    supabase.from('case_likes').select('id').eq('post_id', postId).eq('user_id', userId).single(),
-    supabase.from('case_saves').select('id').eq('post_id', postId).eq('user_id', userId).single(),
+    supabase.from('case_likes').select('id').eq('post_id', postId).eq('user_id', userId).maybeSingle(),
+    supabase.from('case_saves').select('id').eq('post_id', postId).eq('user_id', userId).maybeSingle(),
   ])
   return { liked: !!likeData, saved: !!saveData }
 }

@@ -52,10 +52,8 @@ function HistoryPage() {
 
   // 导出时才加载全量记录（避免每次挂载 200 条查询）
   const loadAllForExport = useCallback(async () => {
-    if (!user) return
-    const data = await getConsultHistory(user.id, 200, 0)
-    setAllRecords(data)
-    return data
+    if (!user) return null
+    return await getConsultHistory(user.id, 200, 0)
   }, [user])
 
   useReachBottom(() => {

@@ -218,9 +218,14 @@ export default function Chat() {
   const [searchMode, setSearchMode] = useState<'chat' | 'search'>('chat')
   const voiceRecognitionRef = useRef<any>(null)
   const messagesRef = useRef<ChatMessage[]>([])
+  const streamAbortRef = useRef<AbortController | null>(null)
+  const loadingRef = useRef(false)
 
-  // 清理：组件卸载时停止语音识别
-  useEffect(() => () => { voiceRecognitionRef.current?.abort() }, [])
+  // 清理：组件卸载时停止语音识别 + 取消流
+  useEffect(() => () => {
+    voiceRecognitionRef.current?.abort()
+    streamAbortRef.current?.abort()
+  }, [])
 
   // 检查首页跳转过来的预填问题
   useEffect(() => {
@@ -236,7 +241,8 @@ export default function Chat() {
 
   /** 普通咨询（调用 legal-chat） */
   const sendChatMessage = useCallback(async (text: string) => {
-    if (!text.trim() || loading) return
+    if (!text.trim() || loadingRef.current) return
+    loadingRef.current = true
     const userMsg: ChatMessage = { role: 'user', content: text.trim(), timestamp: Date.now() }
     const currentMessages = messagesRef.current
     const newMessages = [...currentMessages, userMsg]
@@ -252,9 +258,13 @@ export default function Chat() {
       const anonKey = process.env.TARO_APP_SUPABASE_ANON_KEY
       const url = `${supabaseUrl}/functions/v1/legal-chat`
 
+      const abortCtrl = new AbortController()
+      streamAbortRef.current = abortCtrl
+
       const startTime = Date.now()
       try {
         const response = await fetch(url, {
+          signal: abortCtrl.signal,
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -277,7 +287,7 @@ export default function Chat() {
           legalRefs: [],
         }
         setMessages([...newMessages, assistantMsg])
-        setLoading(false)
+        setLoading(false); loadingRef.current = false
 
         const reader = response.body.getReader()
         const decoder = new TextDecoder()
@@ -360,7 +370,7 @@ export default function Chat() {
         console.error('流式咨询错误:', err)
         Taro.showToast({ title: '咨询失败，请稍后重试', icon: 'none' })
         setMessages(newMessages)
-        setLoading(false)
+        setLoading(false); loadingRef.current = false
       }
       return
     }
@@ -415,12 +425,13 @@ export default function Chat() {
         }).catch(() => {})
       }
     }
-    setLoading(false)
+    setLoading(false); loadingRef.current = false
   }, [messages, loading, user])
 
   /** 联网搜索（调用百度AI搜索） */
   const sendSearchMessage = useCallback(async (text: string) => {
-    if (!text.trim() || loading) return
+    if (!text.trim() || loadingRef.current) return
+    loadingRef.current = true
     const userMsg: ChatMessage = { role: 'user', content: text.trim(), timestamp: Date.now() }
     const newMessages = [...messagesRef.current, userMsg]
     setMessages(newMessages)
@@ -456,7 +467,7 @@ export default function Chat() {
       }
       setMessages([...newMessages, assistantMsg])
     }
-    setLoading(false)
+    setLoading(false); loadingRef.current = false
   }, [messages, loading])
 
   const sendMessage = useCallback((text: string) => {

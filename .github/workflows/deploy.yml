@@ -41,6 +41,8 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Make scripts executable
+        run: chmod +x scripts/*.sh
       - name: Lint
         run: pnpm lint
 

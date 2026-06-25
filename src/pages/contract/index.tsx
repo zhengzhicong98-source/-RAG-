@@ -134,12 +134,20 @@ export default function Contract() {
   }, [compareMode])
 
   const removeFile = (idx: number) => {
-    setFiles(prev => prev.filter((_, i) => i !== idx))
+    setFiles(prev => {
+      const f = prev[idx]
+      if (f && f.preview) URL.revokeObjectURL(f.preview)
+      return prev.filter((_, i) => i !== idx)
+    })
     setResult(null)
   }
 
   const removeFileB = (idx: number) => {
-    setFilesB(prev => prev.filter((_, i) => i !== idx))
+    setFilesB(prev => {
+      const f = prev[idx]
+      if (f && f.preview) URL.revokeObjectURL(f.preview)
+      return prev.filter((_, i) => i !== idx)
+    })
     setResult(null)
   }
 

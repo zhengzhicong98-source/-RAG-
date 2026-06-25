@@ -55,7 +55,8 @@ export default function Plaza() {
   const [refreshing, setRefreshing] = useState(false)
   const [hasMore, setHasMore] = useState(true)
   const [offset, setOffset] = useState(0)
-  const offsetRef = useRef(0) // 避免 fetchPosts 因 offset 变化频繁重建
+  const offsetRef = useRef(0)
+  const fetchRef = useRef<(isRefresh?: boolean) => Promise<void>>(async () => {})
   const PAGE_SIZE = 10
 
   const fetchPosts = useCallback(async (isRefresh = false) => {
@@ -90,15 +91,19 @@ export default function Plaza() {
     fetchPosts(true)
   }, [activeTab])
 
+  // 同步最新 fetchPosts 到 ref，供下拉/触底使用
+  useEffect(() => { fetchRef.current = fetchPosts }, [fetchPosts])
+
   usePullDownRefresh(() => {
     setRefreshing(true)
     setOffset(0)
+    offsetRef.current = 0
     setHasMore(true)
-    fetchPosts(true)
+    fetchRef.current(true)
   })
 
   useReachBottom(() => {
-    if (!loading && hasMore) fetchPosts(false)
+    if (!loading && hasMore) fetchRef.current(false)
   })
 
   const goDetail = (id: string) => {

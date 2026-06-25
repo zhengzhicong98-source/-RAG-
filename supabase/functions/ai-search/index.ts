@@ -18,6 +18,11 @@ Deno.serve(async (req) => {
   try {
     logRequest(req, 'ai-search')
 
+    // 基础认证：校验 apikey 头防止匿名调用消耗 API 额度
+    const providedKey = req.headers.get('apikey')
+    const expectedKey = Deno.env.get('SUPABASE_ANON_KEY')
+    if (!providedKey || (expectedKey && providedKey !== expectedKey)) return err('请通过应用访问', 401)
+
     const apiKey = Deno.env.get('INTEGRATIONS_API_KEY')
     if (!apiKey) return err('服务配置错误', 500)
 

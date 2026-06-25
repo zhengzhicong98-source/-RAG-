@@ -2,10 +2,6 @@ import { createClient } from 'jsr:@supabase/supabase-js@2'
 import { corsHeaders } from '../_shared/cors.ts'
 import { ok, err, handleOptions, logRequest } from '../_shared/response.ts'
 
-const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!
-const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
-const supabaseAdmin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
-
 // 简易 IP 频率限制：每 IP 每分钟最多 5 次
 const rateLimit = new Map<string, number[]>()
 const RATE_WINDOW_MS = 60_000
@@ -27,9 +23,20 @@ Deno.serve(async (req) => {
     }
     recent.push(now)
     rateLimit.set(ip, recent)
+    // 定期清理过期 IP 条目（每 100 次请求清理一次）
+    if (Math.random() < 0.01) {
+      for (const [k, v] of rateLimit) {
+        if (v.every(t => now - t > RATE_WINDOW_MS)) rateLimit.delete(k)
+      }
+    }
 
     const { code } = await req.json().catch(() => ({}))
     if (!code) return err('缺少code', 400)
+
+    const supabaseUrl = Deno.env.get('SUPABASE_URL')
+    const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
+    if (!supabaseUrl || !serviceKey) return err('服务配置错误', 500)
+    const supabaseAdmin = createClient(supabaseUrl, serviceKey)
 
     const APP_ID = Deno.env.get('WECHAT_MINIPROGRAM_LOGIN_APP_ID')
     const APP_SECRET = Deno.env.get('WECHAT_MINIPROGRAM_LOGIN_APP_SECRET')

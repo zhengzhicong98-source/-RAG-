@@ -7,11 +7,9 @@ export default defineConfig({
       '@': path.resolve(__dirname, 'src'),
     },
   },
-  css: {
-    modules: false,
-  },
   test: {
-    environment: 'happy-dom',
+    environment: 'node',
     globals: true,
+    exclude: ['e2e/**', 'node_modules/**', 'dist/**'],
   },
 })

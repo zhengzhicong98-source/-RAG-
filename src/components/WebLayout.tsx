@@ -5,6 +5,7 @@ const NAV_ITEMS = [
   { path: '/pages/consult/index', label: '法律咨询', icon: '💬' },
   { path: '/pages/contract/index', label: '合同审查', icon: '📄' },
   { path: '/pages/plaza/index', label: '案例广场', icon: '🌐' },
+  { path: '/pages/tools/index', label: '工具箱', icon: '🔧' },
 ]
 
 export default function WebLayout({ children }: { children: React.ReactNode }) {

@@ -374,6 +374,9 @@ Deno.serve(async (req) => {
         content,
         rag_used: ragUsed,
         legal_refs: legalRefs,
+        rag_docs: ragUsed ? ragDocsForEval.map(d => ({ id: d.id, title: d.title })) : [],
+        rag_similarities: ragUsed ? ragSimilarities : [],
+        ai_self_eval: aiSelfEval,
         trace: {
           trace_id: traceId,
           ai_duration_ms: Date.now() - aiStartTime,
@@ -429,6 +432,7 @@ Deno.serve(async (req) => {
         if (ragUsed) {
           ragMeta.rag_docs = ragDocsForEval.map(d => ({ id: d.id, title: d.title }))
           ragMeta.rag_similarities = ragSimilarities
+          ragMeta.ai_self_eval = aiSelfEval
         }
         await writer.write(encoder.encode(`data: ${JSON.stringify(ragMeta)}\n\n`))
 

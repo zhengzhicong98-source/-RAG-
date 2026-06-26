@@ -327,6 +327,9 @@ export default function Chat() {
         let fullContent = ''
         let ragUsed = false
         let legalRefs: { id: string; title: string; source: string }[] = []
+        let ragDocs: any[] = []
+        let ragSimilarities: number[] = []
+        let aiSelfEvalResult = true
 
         while (true) {
           const { done, value } = await reader.read()
@@ -346,11 +349,9 @@ export default function Chat() {
               if ('rag_used' in data) {
                 ragUsed = data.rag_used
                 legalRefs = (data.legal_refs && Array.isArray(data.legal_refs)) ? data.legal_refs : []
-                // 存储 rag_docs 用于后续 RAG 评估
-                if (data.rag_docs && Array.isArray(data.rag_docs)) {
-                  (window as any).__ragDocs = data.rag_docs
-                  ;(window as any).__ragSimilarities = data.rag_similarities || []
-                }
+                if (data.rag_docs && Array.isArray(data.rag_docs)) ragDocs = data.rag_docs
+                if (data.rag_similarities) ragSimilarities = data.rag_similarities
+                if ('ai_self_eval' in data) aiSelfEvalResult = data.ai_self_eval
                 continue
               }
               // 检查内容是否被后端拦截
@@ -410,15 +411,15 @@ export default function Chat() {
             }
           } catch { console.error('[consult] save history failed') }
           // 保存 RAG 评估记录
-          if (historyId && legalRefs.length > 0) {
+          if (historyId && ragUsed && ragDocs.length > 0) {
             saveRagEvaluation({
               consultHistoryId: historyId,
               userId: user.id,
               query: text.trim(),
-              retrievedDocIds: legalRefs.map(r => r.id),
-              retrievedDocTitles: legalRefs.map(r => r.title),
-              similarityScores: [],
-              aiSelfEval: true,
+              retrievedDocIds: ragDocs.map((d: any) => d.id),
+              retrievedDocTitles: ragDocs.map((d: any) => d.title),
+              similarityScores: ragSimilarities,
+              aiSelfEval: aiSelfEvalResult,
             }).catch(() => {})
           }
           logAiCall({

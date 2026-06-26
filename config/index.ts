@@ -45,10 +45,6 @@ export default defineConfig<'vite'>(async (merge) => {
           from: 'src/assets/icons/',
           to: 'dist/assets/icons/',
         },
-        {
-          from: 'src/assets/icons/',
-          to: 'dist/static/images/',
-        },
       ],
       options: {}
     },

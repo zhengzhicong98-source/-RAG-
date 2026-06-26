@@ -531,3 +531,102 @@ export async function addTimelineNode(params: { case_id: string; title: string; 
   const { error } = await supabase.from('rights_timeline').insert(params)
   return !error
 }
+
+// ==================== RAG 评估 ====================
+
+/** 保存 RAG 评估记录 */
+export async function saveRagEvaluation(params: {
+  consultHistoryId: string
+  userId: string
+  query: string
+  retrievedDocIds: string[]
+  retrievedDocTitles: string[]
+  similarityScores: number[]
+  aiSelfEval: boolean
+}) {
+  const { error } = await supabase.from('rag_evaluations').insert({
+    consult_history_id: params.consultHistoryId,
+    user_id: params.userId,
+    query: params.query,
+    retrieved_doc_ids: params.retrievedDocIds,
+    retrieved_doc_titles: params.retrievedDocTitles,
+    similarity_scores: params.similarityScores,
+    ai_self_eval: params.aiSelfEval,
+  })
+  return { error }
+}
+
+/** 更新 RAG 评估的用户反馈 */
+export async function updateRagFeedback(consultHistoryId: string, feedback: 1 | -1) {
+  const { error } = await supabase.from('rag_evaluations')
+    .update({ user_feedback: feedback })
+    .eq('consult_history_id', consultHistoryId)
+  return { error }
+}
+
+/** 获取 RAG 准确率统计（管理员看板用） */
+export async function getRagAccuracyStats() {
+  const { data, error } = await supabase.rpc('rag_accuracy_stats_select')
+  if (error || !data || (Array.isArray(data) && data.length === 0)) {
+    // fallback: 从 rag_accuracy_stats 视图查询
+    const { data: viewData } = await supabase
+      .from('rag_accuracy_stats')
+      .select('*')
+      .single()
+    return viewData || { total_queries: 0, satisfaction_rate: 0, avg_top1_similarity: 0 }
+  }
+  return Array.isArray(data) ? data[0] : data
+}
+
+/** 获取最近 trace 列表（管理员看板用） */
+export async function getRecentTraces(limit = 20) {
+  const { data, error } = await supabase
+    .from('trace_logs')
+    .select('*')
+    .order('created_at', { ascending: false })
+    .limit(limit)
+
+  if (error || !data) return []
+
+  // 按 trace_id 聚合
+  const traceMap = new Map<string, {
+    trace_id: string
+    spans: Array<{
+      id: string
+      span_name: string
+      duration_ms: number | null
+      status: string
+      metadata: any
+    }>
+    total_duration_ms: number
+    status: string
+    created_at: string
+  }>()
+
+  for (const row of data as any[]) {
+    const tid = row.trace_id
+    if (!traceMap.has(tid)) {
+      traceMap.set(tid, {
+        trace_id: tid,
+        spans: [],
+        total_duration_ms: 0,
+        status: 'ok',
+        created_at: row.created_at,
+      })
+    }
+    const trace = traceMap.get(tid)!
+    trace.spans.push({
+      id: row.id,
+      span_name: row.span_name,
+      duration_ms: row.duration_ms,
+      status: row.status,
+      metadata: row.metadata,
+    })
+    if (row.duration_ms) trace.total_duration_ms += row.duration_ms
+    if (row.status === 'error') trace.status = 'error'
+  }
+
+  return Array.from(traceMap.values())
+    .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+    .slice(0, limit)
+}

@@ -165,6 +165,8 @@ Deno.serve(async (req) => {
     }
 
     const startTime = Date.now()
+    const traceId = body.traceId || `srv_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
+    const aiStartTime = Date.now()
     const userQuery = messages[messages.length - 1]?.content ?? ''
 
     // ========== 输入内容安全过滤 ==========
@@ -197,17 +199,72 @@ Deno.serve(async (req) => {
     // 仅在法律咨询模式下执行 RAG 检索
     let ragContext = ''
     let legalRefs: { id: string; title: string; source: string }[] = []
+    let ragSimilarities: number[] = []
+    let ragDocIds: string[] = []
+    let ragDocsForEval: { id: string; title: string; similarity: number }[] = []
+    let ragDuration = 0
+    let aiSelfEval = true
     if (mode !== 'document' && mode !== 'dispute') {
       const supabaseUrl = Deno.env.get('SUPABASE_URL')!
       const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
       const ragDocs = await searchLegalDocs(userQuery, apiKey, supabaseUrl, serviceKey)
+      const ragDocsRaw: RagDoc[] = ragDocs
       if (ragDocs.length > 0) {
         ragContext = '\n\n【知识库检索结果 - 请优先基于以下法律条文回答】\n' +
           ragDocs.map((d, i) =>
             `${i + 1}. ${d.source || d.title}\n${d.content}`
           ).join('\n\n')
         legalRefs = ragDocs.map(d => ({ id: d.id, title: d.title, source: d.source }))
+        ragSimilarities = [] // similarity 从 match_legal_docs RPC 返回时不可获取，后续可扩展
+        ragDocIds = ragDocs.map(d => d.id)
+        ragDocsForEval = ragDocs.map(d => ({ id: d.id, title: d.title, similarity: 0 }))
       }
+    }
+
+
+    // RAG 检索元数据（用于评估和追踪）
+    const ragStartTime = Date.now()
+    ragSimilarities = ragDocsForEval.map(d => d.similarity)
+    ragDuration = Date.now() - ragStartTime
+
+    // 异步 AI 自评 RAG 检索质量（不阻塞主流程）
+    aiSelfEval = true
+    if (ragDocsForEval.length > 0) {
+      const evalPromise = (async () => {
+        try {
+          const evalCtrl = new AbortController()
+          const evalTimer = setTimeout(() => evalCtrl.abort(), 3000)
+          const evalRes = await fetch(
+            'https://open.bigmodel.cn/api/paas/v4/chat/completions',
+            {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${apiKey}`,
+              },
+              body: JSON.stringify({
+                model: 'glm-4-flash',
+                messages: [{
+                  role: 'user',
+                  content: `问题：${userQuery}\n检索文档：${ragDocsForEval.map(d => `${d.title}: ${d.similarity}`).join('; ')}\n检索到的文档与问题是否相关？请只回答JSON：{"useful": true/false}`,
+                }],
+              }),
+              signal: evalCtrl.signal,
+            }
+          )
+          clearTimeout(evalTimer)
+          if (evalRes.ok) {
+            const evalData = await evalRes.json()
+            const evalContent = evalData?.choices?.[0]?.message?.content || '{"useful":true}'
+            try {
+              const parsed = JSON.parse(evalContent)
+              aiSelfEval = parsed.useful === true
+            } catch { /* use default */ }
+          }
+        } catch { /* 超时或异常默认 true */ }
+      })()
+      // 非流式模式下等待自评结果，流式模式下不等待
+      if (!useStream) await evalPromise
     }
 
     // 根据模式选择系统提示词，并注入 RAG 上下文
@@ -313,7 +370,16 @@ Deno.serve(async (req) => {
         }
       }
 
-      return ok({ content, rag_used: ragUsed, legal_refs: legalRefs })
+      return ok({
+        content,
+        rag_used: ragUsed,
+        legal_refs: legalRefs,
+        trace: {
+          trace_id: traceId,
+          ai_duration_ms: Date.now() - aiStartTime,
+          total_duration_ms: Date.now() - startTime,
+        },
+      })
     }
 
     // 流式透传：直接将智谱 AI 的 SSE 流返回给前端
@@ -350,7 +416,21 @@ Deno.serve(async (req) => {
           }
         }
         // 流结束后追加 rag_used 元数据和匹配法条引用
-        await writer.write(encoder.encode(`data: ${JSON.stringify({rag_used: ragUsed, legal_refs: legalRefs})}\n\n`))
+        const ragMeta: Record<string, unknown> = {
+          rag_used: ragUsed,
+          legal_refs: legalRefs,
+          trace: {
+            trace_id: traceId,
+            rag_duration_ms: ragDuration,
+            ai_duration_ms: Date.now() - aiStartTime,
+            total_duration_ms: Date.now() - startTime,
+          },
+        }
+        if (ragUsed) {
+          ragMeta.rag_docs = ragDocsForEval.map(d => ({ id: d.id, title: d.title }))
+          ragMeta.rag_similarities = ragSimilarities
+        }
+        await writer.write(encoder.encode(`data: ${JSON.stringify(ragMeta)}\n\n`))
 
         // 异步输出审核（流式）
         if (fullContent) {

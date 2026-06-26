@@ -1,4 +1,5 @@
 import Taro from '@tarojs/taro'
+import { useRole } from '@/hooks/useRole'
 
 const NAV_ITEMS = [
   { path: '/pages/home/index', label: '首页', icon: '🏠' },
@@ -15,6 +16,7 @@ export default function WebLayout({ children }: { children: React.ReactNode }) {
   const pages = Taro.getCurrentPages()
   const currentPage = pages[pages.length - 1]
   const currentPath = currentPage?.route || ''
+  const { isAdmin } = useRole()
 
   return (
     <div style={{ minHeight: '100vh', background: 'hsl(var(--background))' }}>
@@ -79,6 +81,18 @@ export default function WebLayout({ children }: { children: React.ReactNode }) {
           >
             👤
           </div>
+          {isAdmin && (
+            <div
+              onClick={() => Taro.navigateTo({ url: '/pages/admin/index' })}
+              style={{
+                padding: '6px 12px', borderRadius: '8px',
+                background: 'rgba(255,255,255,0.2)', cursor: 'pointer',
+                color: 'white', fontSize: '14px', fontWeight: 600,
+              }}
+            >
+              管理
+            </div>
+          )}
         </div>
       </nav>
 

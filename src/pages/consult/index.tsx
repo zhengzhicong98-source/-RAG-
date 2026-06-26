@@ -1,7 +1,8 @@
 import { useState, useCallback, useRef, useEffect } from 'react'
 import Taro, { useShareAppMessage, useShareTimeline } from '@tarojs/taro'
 import { callEdgeFunction } from '@/utils/callEdgeFunction'
-import { recordQuestion, saveConsultHistory, logAiCall, submitFeedback, saveLaw } from '@/db/api'
+import { recordQuestion, saveConsultHistory, logAiCall, submitFeedback, saveLaw, saveRagEvaluation, updateRagFeedback } from '@/db/api'
+import { generateTraceId, Span } from '@/utils/tracer'
 import { useAuth } from '@/contexts/AuthContext'
 import { parseReply } from '@/utils/parseReply'
 import { checkFrontendInput } from '@/utils/contentFilter'
@@ -64,7 +65,11 @@ function MessageBubble({ msg, onSuggest, isLast, onFeedback, historyId }: { msg:
             <div className="bg-primary/5 rounded-xl border border-primary/20 p-3">
               <div className="flex items-center gap-1 mb-2">
                 <div className="i-mdi-database-check-outline text-xl text-primary" />
-                <span className="text-base text-primary font-medium">已参考知识库法条</span>
+                <span className="text-base text-primary font-medium">
+                  {msg.legalRefs && msg.legalRefs.length > 0 && msg.legalRefs[0].title
+                    ? `已参考：《${msg.legalRefs[0].title}》`
+                    : '已参考知识库法条'}
+                </span>
               </div>
               {(msg.legalRefs && msg.legalRefs.length > 0) ? (
                 <div className="flex flex-col gap-2">
@@ -252,6 +257,8 @@ export default function Chat() {
     setLoading(true)
 
     const apiMessages = newMessages.map(m => ({ role: m.role, content: m.content }))
+    const traceId = generateTraceId()
+    const frontendSpan = new Span(traceId, 'frontend', user?.id)
 
     // H5 环境使用流式输出
     if (process.env.TARO_ENV === 'h5') {
@@ -272,7 +279,7 @@ export default function Chat() {
             'Authorization': `Bearer ${anonKey}`,
             'apikey': anonKey || '',
           },
-          body: JSON.stringify({ messages: apiMessages, mode: 'chat', stream: true }),
+          body: JSON.stringify({ messages: apiMessages, mode: 'chat', stream: true, traceId }),
         })
 
         if (!response.ok || !response.body) {
@@ -314,6 +321,11 @@ export default function Chat() {
               if ('rag_used' in data) {
                 ragUsed = data.rag_used
                 legalRefs = (data.legal_refs && Array.isArray(data.legal_refs)) ? data.legal_refs : []
+                // 存储 rag_docs 用于后续 RAG 评估
+                if (data.rag_docs && Array.isArray(data.rag_docs)) {
+                  (window as any).__ragDocs = data.rag_docs
+                  ;(window as any).__ragSimilarities = data.rag_similarities || []
+                }
                 continue
               }
               // 检查内容是否被后端拦截
@@ -371,6 +383,18 @@ export default function Chat() {
               })
             }
           } catch { console.error('[consult] save history failed') }
+          // 保存 RAG 评估记录
+          if (historyId && legalRefs.length > 0) {
+            saveRagEvaluation({
+              consultHistoryId: historyId,
+              userId: user.id,
+              query: text.trim(),
+              retrievedDocIds: legalRefs.map(r => r.id),
+              retrievedDocTitles: legalRefs.map(r => r.title),
+              similarityScores: [],
+              aiSelfEval: true,
+            }).catch(() => {})
+          }
           logAiCall({
             userId: user.id,
             functionName: 'legal-chat',
@@ -382,6 +406,7 @@ export default function Chat() {
             ragHitCount: ragUsed ? 1 : 0,
             success: true,
           }).catch(() => {})
+          frontendSpan.finish('ok', { message_length: text.length, response_length: fullContent.length }).catch(() => {})
         }
 
       } catch (err) {
@@ -509,6 +534,7 @@ export default function Chat() {
 
   const handleFeedback = useCallback(async (historyId: string, feedback: 1 | -1) => {
     await submitFeedback(historyId, feedback)
+    updateRagFeedback(historyId, feedback).catch(() => {})
     setMessages(prev => prev.map(m =>
       m.historyId === historyId ? { ...m, feedback } : m
     ))

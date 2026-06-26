@@ -1,6 +1,8 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import Taro, { useShareAppMessage, useShareTimeline, useReachBottom, usePullDownRefresh } from '@tarojs/taro'
 import { getCasePosts } from '@/db/api'
+import { supabase } from '@/client/supabase'
+import { useRole } from '@/hooks/useRole'
 import type { CasePost, CaseCategory } from '@/db/types'
 
 const TABS: { key: string; label: string }[] = [
@@ -56,6 +58,7 @@ export default function Plaza() {
   const [hasMore, setHasMore] = useState(true)
   const [offset, setOffset] = useState(0)
   const offsetRef = useRef(0)
+  const { isModerator } = useRole()
   const fetchRef = useRef<(isRefresh?: boolean) => Promise<void>>(async () => {})
   const PAGE_SIZE = 10
 
@@ -108,6 +111,23 @@ export default function Plaza() {
 
   const goDetail = (id: string) => {
     Taro.navigateTo({ url: `/pages/plaza/detail?id=${id}` })
+  }
+
+  const handleDeletePost = async (postId: string) => {
+    Taro.showModal({
+      title: '确认删除',
+      content: '确定删除此帖子？',
+      success: async (res) => {
+        if (!res.confirm) return
+        const { error } = await supabase.from('case_posts').delete().eq('id', postId)
+        if (error) {
+          Taro.showToast({ title: '删除失败', icon: 'none' })
+        } else {
+          setPosts(prev => prev.filter(p => p.id !== postId))
+          Taro.showToast({ title: '已删除', icon: 'success' })
+        }
+      },
+    })
   }
 
   const goPost = () => {
@@ -182,6 +202,14 @@ export default function Plaza() {
                       <span>{post.saves_count}</span>
                     </div>
                     <span>{formatTime(post.created_at)}</span>
+                    {isModerator && (
+                      <button
+                        className="text-sm text-red-500 px-2 py-1"
+                        onClick={(e) => { e.stopPropagation(); handleDeletePost(post.id) }}
+                      >
+                        删除
+                      </button>
+                    )}
                   </div>
                 </div>
               </div>

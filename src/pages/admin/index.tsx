@@ -1,5 +1,6 @@
 import { useState, useCallback, useEffect, useRef } from 'react'
 import Taro from '@tarojs/taro'
+import { RoleGuard } from '@/components/RoleGuard'
 import { supabase } from '@/client/supabase'
 import { getLegalKnowledgeDocs, getPendingEmbeddingDocs, deleteLegalKnowledge } from '@/db/api'
 import { callEdgeFunction } from '@/utils/callEdgeFunction'
@@ -290,6 +291,7 @@ export default function Admin() {
     .split('\n').map(l => l.trim()).filter(l => l.length > 0).length
 
   return (
+    <RoleGuard requiredRole="admin">
     <div className="min-h-screen bg-background">
       {/* 头部 */}
       <div className="bg-gradient-primary px-6 py-8">
@@ -690,5 +692,6 @@ export default function Admin() {
         )}
       </div>
     </div>
+    </RoleGuard>
   )
 }

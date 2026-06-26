@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import Taro from '@tarojs/taro'
-import { getAdminStats } from '@/db/api'
+import { getAdminStats, getRagAccuracyStats, getRecentTraces } from '@/db/api'
+import { RoleGuard } from '@/components/RoleGuard'
 
 interface AdminStats {
   total: number
@@ -32,6 +33,8 @@ function formatDate(dateStr: string): string {
 
 export default function Stats() {
   const [stats, setStats] = useState<AdminStats | null>(null)
+  const [ragStats, setRagStats] = useState<any>(null)
+  const [traces, setTraces] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
@@ -43,6 +46,8 @@ export default function Stats() {
     try {
       const data = await getAdminStats()
       setStats(data)
+      getRagAccuracyStats().then(setRagStats).catch(() => {})
+      getRecentTraces(20).then(setTraces).catch(() => {})
     } catch (err) {
       console.error('加载统计数据失败:', err)
       Taro.showToast({ title: '加载失败', icon: 'none' })
@@ -56,6 +61,7 @@ export default function Stats() {
     : 0
 
   return (
+    <RoleGuard requiredRole="admin">
     <div className="min-h-screen bg-background">
       {/* 头部 */}
       <div className="bg-gradient-primary px-6 py-8">
@@ -166,9 +172,66 @@ export default function Stats() {
                 </div>
               )}
             </div>
+
+            {/* RAG 准确率统计 */}
+            {ragStats && (
+              <div className="bg-card border border-border rounded-2xl p-4">
+                <p className="text-xl font-semibold text-foreground mb-3">RAG 检索准确率</p>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="bg-muted rounded-xl p-3">
+                    <p className="text-base text-muted-foreground">总查询次数</p>
+                    <p className="text-3xl font-bold text-foreground mt-1">{ragStats.total_queries || 0}</p>
+                  </div>
+                  <div className="bg-muted rounded-xl p-3">
+                    <p className="text-base text-muted-foreground">用户满意率</p>
+                    <p className="text-3xl font-bold text-green-600 mt-1">{ragStats.satisfaction_rate || 0}%</p>
+                  </div>
+                  <div className="bg-muted rounded-xl p-3">
+                    <p className="text-base text-muted-foreground">Top1 平均相似度</p>
+                    <p className="text-3xl font-bold text-primary mt-1">{ragStats.avg_top1_similarity || 0}</p>
+                  </div>
+                  <div className="bg-muted rounded-xl p-3">
+                    <p className="text-base text-muted-foreground">AI 自评有用率</p>
+                    <p className="text-3xl font-bold text-blue-600 mt-1">
+                      {ragStats.total_queries > 0
+                        ? Math.round((ragStats.ai_eval_useful / ragStats.total_queries) * 100)
+                        : 0}%
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* 链路追踪看板 */}
+            {traces.length > 0 && (
+              <div className="bg-card border border-border rounded-2xl overflow-hidden">
+                <div className="px-4 py-3 border-b border-border">
+                  <p className="text-xl font-semibold text-foreground">最近 {traces.length} 条调用链路</p>
+                </div>
+                <div className="divide-y divide-border">
+                  {traces.map((trace: any) => (
+                    <div key={trace.trace_id} className="px-4 py-3">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="flex-1 min-w-0">
+                          <p className="text-lg font-medium text-foreground truncate">{trace.trace_id}</p>
+                          <p className="text-base text-muted-foreground">
+                            {trace.spans.length} 个 span · 总耗时 {trace.total_duration_ms}ms
+                            {trace.status === 'error' && <span className="text-red-600 ml-2">含错误</span>}
+                          </p>
+                        </div>
+                        <span className="text-base text-muted-foreground flex-shrink-0">
+                          {trace.spans.map((s: any) => `${s.span_name}:${s.duration_ms || '?'}ms`).join(' → ')}
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         )}
       </div>
     </div>
+    </RoleGuard>
   )
 }

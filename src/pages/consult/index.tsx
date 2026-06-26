@@ -369,9 +369,10 @@ export default function Chat() {
         // 流结束后保存历史和日志
         const responseTimeMs = Date.now() - startTime
         if (user && fullContent) {
+          let historyId: string | undefined
           try {
-            const { id: historyId, error: saveError } = await saveConsultHistory(user.id, text.trim(), fullContent, ragUsed, responseTimeMs)
-            void saveError
+            const result = await saveConsultHistory(user.id, text.trim(), fullContent, ragUsed, responseTimeMs)
+            historyId = result.id
             if (historyId) {
               setMessages(prev => {
                 const updated = [...prev]
@@ -520,7 +521,7 @@ export default function Chat() {
     // 前端输入预检（长度 + 违禁词）
     const check = checkFrontendInput(trimmed)
     if (!check.ok) {
-      Taro.showToast({ title: check.reason, icon: 'none' })
+      Taro.showToast({ title: check.reason || '内容不合规', icon: 'none' })
       return
     }
 

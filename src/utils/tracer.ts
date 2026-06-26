@@ -22,7 +22,7 @@ export class Span {
     const endTime = new Date()
     const durationMs = endTime.getTime() - this.startTime.getTime()
 
-    supabase.from('trace_logs').insert({
+    void supabase.from('trace_logs').insert({
       trace_id: this.traceId,
       user_id: this.userId || null,
       span_name: this.spanName,
@@ -31,7 +31,7 @@ export class Span {
       duration_ms: durationMs,
       status,
       metadata: metadata || {},
-    }).then(() => {}).catch(() => {})
+    })
 
     return durationMs
   }

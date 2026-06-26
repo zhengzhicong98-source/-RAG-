@@ -620,16 +620,11 @@ export async function updateRagFeedback(consultHistoryId: string, feedback: 1 | 
 
 /** 获取 RAG 准确率统计（管理员看板用） */
 export async function getRagAccuracyStats() {
-  const { data, error } = await supabase.rpc('rag_accuracy_stats_select')
-  if (error || !data || (Array.isArray(data) && data.length === 0)) {
-    // fallback: 从 rag_accuracy_stats 视图查询
-    const { data: viewData } = await supabase
-      .from('rag_accuracy_stats')
-      .select('*')
-      .single()
-    return viewData || { total_queries: 0, satisfaction_rate: 0, avg_top1_similarity: 0 }
-  }
-  return Array.isArray(data) ? data[0] : data
+  const { data } = await supabase
+    .from('rag_accuracy_stats')
+    .select('*')
+    .single()
+  return data || { total_queries: 0, satisfaction_rate: 0, avg_top1_similarity: 0, ai_eval_useful: 0 }
 }
 
 /** 获取最近 trace 列表（管理员看板用） */

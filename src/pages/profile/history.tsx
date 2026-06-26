@@ -60,6 +60,17 @@ function HistoryPage() {
     if (!loading && hasMore) loadData(false)
   })
 
+  const handleContinue = (record: ConsultHistory) => {
+    Taro.setStorageSync('continue_consult', JSON.stringify({
+      id: record.id,
+      question: record.question,
+      answer: record.answer,
+      ragUsed: record.rag_used,
+      timestamp: new Date(record.created_at).getTime(),
+    }))
+    Taro.switchTab({ url: '/pages/consult/index' })
+  }
+
   const handleDelete = (id: string) => {
     Taro.showModal({
       title: '确认删除',
@@ -157,9 +168,18 @@ function HistoryPage() {
                 {expandedId === record.id && (
                   <div className="px-4 pb-3 border-t border-border">
                     <p className="text-xl text-muted-foreground leading-relaxed mt-3 whitespace-pre-line line-clamp-6">{record.answer}</p>
-                    <div className="flex items-center gap-1 mt-3 text-xl text-destructive" onClick={() => handleDelete(record.id)}>
-                      <div className="i-mdi-trash-can-outline text-xl" />
-                      <span>删除记录</span>
+                    <div className="flex items-center justify-between mt-3">
+                      <div className="flex items-center gap-1 text-xl text-destructive" onClick={() => handleDelete(record.id)}>
+                        <div className="i-mdi-trash-can-outline text-xl" />
+                        <span>删除记录</span>
+                      </div>
+                      <div
+                        className="flex items-center gap-1 text-xl text-primary"
+                        onClick={() => handleContinue(record)}
+                      >
+                        <div className="i-mdi-message-reply-outline text-xl" />
+                        <span>继续对话</span>
+                      </div>
                     </div>
                   </div>
                 )}

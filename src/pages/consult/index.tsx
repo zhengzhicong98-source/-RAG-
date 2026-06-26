@@ -233,12 +233,37 @@ export default function Chat() {
     streamAbortRef.current?.abort()
   }, [])
 
-  // 检查首页跳转过来的预填问题
+  // 检查首页跳转过来的预填问题 / 继续对话的历史上下文
   useEffect(() => {
     const prefill = Taro.getStorageSync('consult_prefill')
     if (prefill) {
       setInput(prefill)
       Taro.removeStorageSync('consult_prefill')
+    }
+
+    const continueData = Taro.getStorageSync('continue_consult')
+    if (continueData) {
+      try {
+        const parsed = JSON.parse(continueData)
+        const historyMessages: ChatMessage[] = [
+          {
+            role: 'user',
+            content: parsed.question,
+            timestamp: parsed.timestamp,
+          },
+          {
+            role: 'assistant',
+            content: parsed.answer,
+            timestamp: parsed.timestamp + 1,
+            ragUsed: parsed.ragUsed,
+            historyId: parsed.id,
+          },
+        ]
+        setMessages(historyMessages)
+        Taro.removeStorageSync('continue_consult')
+      } catch {
+        Taro.removeStorageSync('continue_consult')
+      }
     }
   }, [])
 

@@ -3,7 +3,7 @@ import Taro, { useDidShow, useShareAppMessage, useShareTimeline } from '@tarojs/
 import { Image } from '@tarojs/components'
 import { useAuth } from '@/contexts/AuthContext'
 import { withRouteGuard } from '@/components/RouteGuard'
-import { getUserStats, getConsultHistory } from '@/db/api'
+import { getUserStats, getConsultHistory, deleteConsultHistory } from '@/db/api'
 import type { ConsultHistory } from '@/db/types'
 import LegalUniverse from '@/components/LegalUniverse'
 
@@ -28,6 +28,16 @@ function ProfilePage() {
 
   useEffect(() => { loadData() }, [loadData])
   useDidShow(() => { loadData() })
+
+  const handleDeleteStar = useCallback(async (id: string) => {
+    const ok = await deleteConsultHistory(id)
+    if (ok) {
+      setConsultHistory(prev => prev.filter(h => h.id !== id))
+      Taro.showToast({ title: '已删除', icon: 'success' })
+    } else {
+      Taro.showToast({ title: '删除失败', icon: 'none' })
+    }
+  }, [])
 
   const joinDays = user?.created_at
     ? Math.floor((Date.now() - new Date(user.created_at).getTime()) / 86400000)
@@ -94,7 +104,7 @@ function ProfilePage() {
 
       {/* 我的维权宇宙 */}
       <div className="px-4 mt-4">
-        <LegalUniverse history={consultHistory} />
+        <LegalUniverse history={consultHistory} onDelete={handleDeleteStar} />
       </div>
 
       {/* 功能菜单 */}

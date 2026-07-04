@@ -1,37 +1,38 @@
 import Taro, { useShareAppMessage, useShareTimeline } from '@tarojs/taro'
+import MdIcon from '@/components/MdIcon'
 
 const toolGroups = [
   {
     title: '法律文书',
     items: [
-      { icon: 'i-mdi-file-document-edit-outline', title: '文书生成', desc: '劳动合同解除书、催收函等', path: '/pages/document/index' },
+      { icon: 'file-document-edit-outline', title: '文书生成', desc: '劳动合同解除书、催收函等', path: '/pages/document/index' },
     ],
   },
   {
     title: '计算工具',
     items: [
-      { icon: 'i-mdi-stethoscope', title: '病假工资计算器', desc: '根据工资和病假天数计算应得工资', path: '/pages/calculator/index?type=sick' },
-      { icon: 'i-mdi-home-alert-outline', title: '违约金计算器', desc: '租房提前退租违约金计算', path: '/pages/calculator/index?type=penalty' },
-      { icon: 'i-mdi-clock-outline', title: '加班工资计算器', desc: '平日/休息日/法定假日加班费', path: '/pages/calculator/index?type=overtime' },
-      { icon: 'i-mdi-cash-multiple', title: '离职补偿计算器', desc: 'N/N+1/2N 经济补偿金速算', path: '/pages/calculator/index?type=severance' },
-      { icon: 'i-mdi-account-cash-outline', title: '试用期工资计算器', desc: '试用期工资不得低于转正80%', path: '/pages/calculator/index?type=probation' },
+      { icon: 'stethoscope', title: '病假工资计算器', desc: '根据工资和病假天数计算应得工资', path: '/pages/calculator/index?type=sick' },
+      { icon: 'home-alert-outline', title: '违约金计算器', desc: '租房提前退租违约金计算', path: '/pages/calculator/index?type=penalty' },
+      { icon: 'clock-outline', title: '加班工资计算器', desc: '平日/休息日/法定假日加班费', path: '/pages/calculator/index?type=overtime' },
+      { icon: 'cash-multiple', title: '离职补偿计算器', desc: 'N/N+1/2N 经济补偿金速算', path: '/pages/calculator/index?type=severance' },
+      { icon: 'account-cash-outline', title: '试用期工资计算器', desc: '试用期工资不得低于转正80%', path: '/pages/calculator/index?type=probation' },
     ],
   },
   {
     title: '法律资源',
     items: [
-      { icon: 'i-mdi-bookshelf', title: '法律知识库', desc: '浏览劳动法、租房、消费等法律法规原文', path: '/pages/knowledge/index' },
-      { icon: 'i-mdi-book-open-outline', title: '法律法规原文库', desc: '《劳动法》《劳动合同法》《民法典》全文检索', path: '/pages/laws/index' },
-      { icon: 'i-mdi-account-tie-outline', title: '律师在线咨询', desc: '按专业领域和城市查找执业律师', path: '/pages/lawyers/index' },
-      { icon: 'i-mdi-map-marker-outline', title: '维权导航', desc: '全国6类维权机构，含导航和路线', path: '/pages/rights/index' },
-      { icon: 'i-mdi-timeline-text-outline', title: '维权进度追踪', desc: '记录维权过程，追踪投诉→调解→仲裁进度', path: '/pages/rights/track' },
-      { icon: 'i-mdi-clipboard-check-outline', title: '证据采集向导', desc: '勾选已有证据，AI提示补充方向', path: '/pages/evidence/index' },
+      { icon: 'bookshelf', title: '法律知识库', desc: '浏览劳动法、租房、消费等法律法规原文', path: '/pages/knowledge/index' },
+      { icon: 'book-open-outline', title: '法律法规原文库', desc: '《劳动法》《劳动合同法》《民法典》全文检索', path: '/pages/laws/index' },
+      { icon: 'account-tie-outline', title: '律师在线咨询', desc: '按专业领域和城市查找执业律师', path: '/pages/lawyers/index' },
+      { icon: 'map-marker-outline', title: '维权导航', desc: '全国6类维权机构，含导航和路线', path: '/pages/rights/index' },
+      { icon: 'timeline-text-outline', title: '维权进度追踪', desc: '记录维权过程，追踪投诉→调解→仲裁进度', path: '/pages/rights/track' },
+      { icon: 'clipboard-check-outline', title: '证据采集向导', desc: '勾选已有证据，AI提示补充方向', path: '/pages/evidence/index' },
     ],
   },
   {
     title: '管理员',
     items: [
-      { icon: 'i-mdi-database-cog-outline', title: '知识库管理', desc: '上传法律条文，启用 RAG 增强回答', path: '/pages/admin/index' },
+      { icon: 'database-cog-outline', title: '知识库管理', desc: '上传法律条文，启用 RAG 增强回答', path: '/pages/admin/index' },
     ],
   },
 ]
@@ -59,12 +60,12 @@ export default function Tools() {
                 className={`flex items-center gap-4 px-4 py-4 transition-all active:bg-muted ${idx < group.items.length - 1 ? 'border-b border-border' : ''}`}
                 onClick={() => navigate(item.path)}
               >
-                <div className={`${item.icon} text-3xl text-primary flex-shrink-0`} />
+                <MdIcon name={item.icon} size="52rpx" color="primary" className="flex-shrink-0" />
                 <div className="flex-1">
                   <p className="text-xl font-medium text-foreground">{item.title}</p>
                   <p className="text-xl text-muted-foreground mt-0.5">{item.desc}</p>
                 </div>
-                <div className="i-mdi-chevron-right text-2xl text-muted-foreground" />
+                <MdIcon name="chevron-right" size="40rpx" color="muted-foreground" />
               </div>
             ))}
           </div>
@@ -74,7 +75,7 @@ export default function Tools() {
       {/* 免责声明 */}
       <div className="mt-4 px-4 py-4 bg-muted rounded-2xl">
         <div className="flex items-start gap-2">
-          <div className="i-mdi-information-outline text-xl text-muted-foreground mt-0.5 flex-shrink-0" />
+          <MdIcon name="information-outline" size="40rpx" color="muted-foreground" className="mt-0.5 flex-shrink-0" />
           <p className="text-xl text-muted-foreground leading-relaxed">
             本工具提供的信息仅供参考，不构成正式法律建议。如涉及重大法律事务，请咨询持证律师。
           </p>

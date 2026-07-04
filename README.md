@@ -6,6 +6,18 @@
 >
 > 🧭 **想快速理解技术选型？** 直接跳到 [架构决策记录（ADR）](#架构决策记录adr) 或 [`docs/ADR.md`](docs/ADR.md)。
 
+## 📱 应用截图
+
+| 首页 | AI 法律咨询 | 合同审查 |
+|:---:|:---:|:---:|
+| <img src="docs/screenshots/01-home.png" width="250"> | <img src="docs/screenshots/02-rag-chat-query.png" width="250"> | <img src="docs/screenshots/04-contract-review.png" width="250"> |
+| 五大核心功能入口 + 热门避雷指南 | RAG 混合检索，回答附带法条溯源与相似度 | 拍照上传，OCR 识别霸王条款 |
+
+| 工具箱 | 知识库管理 | 维权宇宙 |
+|:---:|:---:|:---:|
+| <img src="docs/screenshots/06-toolbox-resources.png" width="250"> | <img src="docs/screenshots/08-kb-dashboard.png" width="250"> | <img src="docs/screenshots/09-profile-universe.png" width="250"> |
+| 计算器 + 知识库 + 维权导航 + 证据向导 | RAG 数据看板 · 检索准确率评估 | 每一次咨询都是一颗星 · 交互式可视化 |
+
 ## 核心功能
 
 | 功能 | 说明 |

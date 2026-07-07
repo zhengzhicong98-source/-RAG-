@@ -1,5 +1,5 @@
-import { corsHeaders } from '../_shared/cors.ts'
 import { ok, err, handleOptions, logRequest } from '../_shared/response.ts'
+import { requireAuth } from '../_shared/auth.ts'
 
 const AI_SEARCH_API = 'https://open.bigmodel.cn/api/paas/v4/chat/completions'
 
@@ -13,22 +13,21 @@ interface Reference {
 }
 
 Deno.serve(async (req) => {
-  if (req.method === 'OPTIONS') return handleOptions()
+  if (req.method === 'OPTIONS') return handleOptions(req)
 
   try {
     logRequest(req, 'ai-search')
 
-    // 基础认证：校验 apikey 头防止匿名调用消耗 API 额度
-    const providedKey = req.headers.get('apikey')
-    const expectedKey = Deno.env.get('SUPABASE_ANON_KEY')
-    if (!providedKey || (expectedKey && providedKey !== expectedKey)) return err('请通过应用访问', 401)
+    // JWT 鉴权（替换旧的 apikey 弱校验）
+    const authResult = await requireAuth(req)
+    if (authResult instanceof Response) return authResult
 
     const apiKey = Deno.env.get('INTEGRATIONS_API_KEY')
-    if (!apiKey) return err('服务配置错误', 500)
+    if (!apiKey) return err('服务配置错误', req, 500)
 
     const { query } = await req.json()
     if (!query || !String(query).trim()) {
-      return err('搜索内容不能为空', 400)
+      return err('搜索内容不能为空', req, 400)
     }
 
     // 在查询前加法律背景，提升搜索质量
@@ -54,9 +53,9 @@ Deno.serve(async (req) => {
     if (!resp.ok) {
       const errText = await resp.text()
       console.error('[ai-search] API错误:', errText)
-      if (resp.status === 429) return err('请求过于频繁，请稍后再试', 429)
-      if (resp.status === 402) return err('API余额不足，请联系管理员', 402)
-      return err('AI搜索服务暂时不可用，请稍后再试', 500)
+      if (resp.status === 429) return err('请求过于频繁，请稍后再试', req, 429)
+      if (resp.status === 402) return err('API余额不足，请联系管理员', req, 402)
+      return err('AI搜索服务暂时不可用，请稍后再试', req, 500)
     }
 
     // 收集 SSE 流式响应
@@ -95,10 +94,11 @@ Deno.serve(async (req) => {
       }
     }
 
-    return ok({ content: fullContent, references })
+    return ok({ content: fullContent, references }, req)
 
-  } catch (err) {
-    console.error('[ai-search] 错误:', err)
-    return err('搜索服务异常，请稍后重试', 500)
+  } catch (e) {
+    // 变量名从 err 改为 e，避免遮蔽导入的 err() 函数
+    console.error('[ai-search] 错误:', e)
+    return err('搜索服务异常，请稍后重试', req, 500)
   }
 })

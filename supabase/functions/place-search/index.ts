@@ -1,4 +1,5 @@
-import { corsHeaders } from '../_shared/cors.ts'
+import { getCorsHeaders } from '../_shared/cors.ts'
+import { requireAuth } from '../_shared/auth.ts'
 
 /** 高德 poi（location 为 "lng,lat" 字符串）归一化为前端约定的结构（location 为 {lat,lng}） */
 interface AmapPoi {
@@ -29,16 +30,22 @@ function normalizePois(pois: AmapPoi[]): unknown[] {
 }
 
 Deno.serve(async (req) => {
+  const cors = getCorsHeaders(req)
+
   if (req.method === 'OPTIONS') {
-    return new Response(null, { headers: corsHeaders })
+    return new Response(null, { headers: cors })
   }
+
+  // JWT 鉴权
+  const authResult = await requireAuth(req)
+  if (authResult instanceof Response) return authResult
 
   try {
     const amapKey = Deno.env.get('AMAP_KEY')
     if (!amapKey) {
       return new Response(
         JSON.stringify({ error: '服务配置错误' }),
-        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        { status: 500, headers: { ...cors, 'Content-Type': 'application/json' } }
       )
     }
 
@@ -52,7 +59,7 @@ Deno.serve(async (req) => {
       if (!region) {
         return new Response(
           JSON.stringify({ error: '缺少 region 参数' }),
-          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } }
         )
       }
       const params = new URLSearchParams({ keywords: query, region, key: amapKey, output: 'json', offset: '20' })
@@ -61,13 +68,13 @@ Deno.serve(async (req) => {
       })
       if (!resp.ok) {
         console.error('region API 错误:', await resp.text())
-        if (resp.status === 429) return new Response(JSON.stringify({ error: '请求过于频繁，请稍后再试' }), { status: 429, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
-        return new Response(JSON.stringify({ error: '地图服务暂时不可用' }), { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
+        if (resp.status === 429) return new Response(JSON.stringify({ error: '请求过于频繁，请稍后再试' }), { status: 429, headers: { ...cors, 'Content-Type': 'application/json' } })
+        return new Response(JSON.stringify({ error: '地图服务暂时不可用' }), { status: 500, headers: { ...cors, 'Content-Type': 'application/json' } })
       }
       const data = await resp.json()
       return new Response(
         JSON.stringify({ results: normalizePois(data.pois || []), status: data.status === '1' ? 0 : 1 }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        { headers: { ...cors, 'Content-Type': 'application/json' } }
       )
     }
 
@@ -80,7 +87,7 @@ Deno.serve(async (req) => {
       if (!lat || !lng) {
         return new Response(
           JSON.stringify({ error: '缺少 lat/lng 参数' }),
-          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } }
         )
       }
       const params = new URLSearchParams({
@@ -96,13 +103,13 @@ Deno.serve(async (req) => {
       })
       if (!resp.ok) {
         console.error('nearby API 错误:', await resp.text())
-        if (resp.status === 429) return new Response(JSON.stringify({ error: '请求过于频繁，请稍后再试' }), { status: 429, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
-        return new Response(JSON.stringify({ error: '地图服务暂时不可用' }), { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
+        if (resp.status === 429) return new Response(JSON.stringify({ error: '请求过于频繁，请稍后再试' }), { status: 429, headers: { ...cors, 'Content-Type': 'application/json' } })
+        return new Response(JSON.stringify({ error: '地图服务暂时不可用' }), { status: 500, headers: { ...cors, 'Content-Type': 'application/json' } })
       }
       const data = await resp.json()
       return new Response(
         JSON.stringify({ results: normalizePois(data.pois || []), status: data.status === '1' ? 0 : 1 }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        { headers: { ...cors, 'Content-Type': 'application/json' } }
       )
     }
 
@@ -112,7 +119,7 @@ Deno.serve(async (req) => {
       if (!uid) {
         return new Response(
           JSON.stringify({ error: '缺少 uid 参数' }),
-          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } }
         )
       }
       const params = new URLSearchParams({ id: uid, key: amapKey, output: 'json' })
@@ -121,23 +128,23 @@ Deno.serve(async (req) => {
       })
       if (!resp.ok) {
         console.error('detail API 错误:', await resp.text())
-        if (resp.status === 429) return new Response(JSON.stringify({ error: '请求过于频繁，请稍后再试' }), { status: 429, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
-        return new Response(JSON.stringify({ error: '地图服务暂时不可用' }), { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
+        if (resp.status === 429) return new Response(JSON.stringify({ error: '请求过于频繁，请稍后再试' }), { status: 429, headers: { ...cors, 'Content-Type': 'application/json' } })
+        return new Response(JSON.stringify({ error: '地图服务暂时不可用' }), { status: 500, headers: { ...cors, 'Content-Type': 'application/json' } })
       }
       const data = await resp.json()
-      return new Response(JSON.stringify(data), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
+      return new Response(JSON.stringify(data), { headers: { ...cors, 'Content-Type': 'application/json' } })
     }
 
     return new Response(
       JSON.stringify({ error: '无效的 mode 参数，可选值: region | nearby | detail' }),
-      { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } }
     )
 
   } catch (err) {
     console.error('place-search 错误:', err)
     return new Response(
       JSON.stringify({ error: '服务异常，请稍后重试' }),
-      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      { status: 500, headers: { ...cors, 'Content-Type': 'application/json' } }
     )
   }
 })

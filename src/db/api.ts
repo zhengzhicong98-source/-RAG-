@@ -236,29 +236,14 @@ function getCurrentWeekInfo(): { year: number; week: number } {
 export async function recordQuestion(questionText: string, category?: string): Promise<boolean> {
   const { year, week } = getCurrentWeekInfo()
   const trimmed = questionText.trim().slice(0, 100)
+  if (!trimmed) return false
 
-  // 尝试先查询是否存在
-  const { data: existing } = await supabase
-    .from('question_stats')
-    .select('id, count')
-    .eq('question_text', trimmed)
-    .eq('week_number', week)
-    .eq('year', year)
-    .maybeSingle()
-
-  if (existing) {
-    const { error } = await supabase
-      .from('question_stats')
-      .update({ count: existing.count + 1, updated_at: new Date().toISOString() })
-      .eq('id', existing.id)
-    return !error
-  }
-
-  const { error } = await supabase.from('question_stats').insert({
-    question_text: trimmed,
-    category: category || null,
-    week_number: week,
-    year,
+  // 走 SECURITY DEFINER RPC，保证原子递增且防越权（vuln-0004 修复）
+  const { error } = await supabase.rpc('increment_question_count', {
+    p_question_text: trimmed,
+    p_category: category || null,
+    p_week_number: week,
+    p_year: year,
   })
   return !error
 }

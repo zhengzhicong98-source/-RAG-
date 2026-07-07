@@ -1,5 +1,4 @@
 import { createClient } from 'jsr:@supabase/supabase-js@2'
-import { corsHeaders } from '../_shared/cors.ts'
 import { ok, err, handleOptions, logRequest } from '../_shared/response.ts'
 
 // 简易 IP 频率限制：每 IP 每分钟最多 5 次
@@ -8,7 +7,7 @@ const RATE_WINDOW_MS = 60_000
 const RATE_MAX = 5
 
 Deno.serve(async (req) => {
-  if (req.method === 'OPTIONS') return handleOptions()
+  if (req.method === 'OPTIONS') return handleOptions(req)
 
   try {
     logRequest(req, 'wechat-login')
@@ -19,7 +18,7 @@ Deno.serve(async (req) => {
     const timestamps = rateLimit.get(ip) || []
     const recent = timestamps.filter(t => now - t < RATE_WINDOW_MS)
     if (recent.length >= RATE_MAX) {
-      return err('操作过于频繁，请稍后再试', 429)
+      return err('操作过于频繁，请稍后再试', req, 429)
     }
     recent.push(now)
     rateLimit.set(ip, recent)
@@ -31,23 +30,23 @@ Deno.serve(async (req) => {
     }
 
     const { code } = await req.json().catch(() => ({}))
-    if (!code) return err('缺少code', 400)
+    if (!code) return err('缺少code', req, 400)
 
     const supabaseUrl = Deno.env.get('SUPABASE_URL')
     const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
-    if (!supabaseUrl || !serviceKey) return err('服务配置错误', 500)
+    if (!supabaseUrl || !serviceKey) return err('服务配置错误', req, 500)
     const supabaseAdmin = createClient(supabaseUrl, serviceKey)
 
     const APP_ID = Deno.env.get('WECHAT_MINIPROGRAM_LOGIN_APP_ID')
     const APP_SECRET = Deno.env.get('WECHAT_MINIPROGRAM_LOGIN_APP_SECRET')
-    if (!APP_ID || !APP_SECRET) return err('微信小程序配置缺失，请联系管理员', 500)
+    if (!APP_ID || !APP_SECRET) return err('微信小程序配置缺失，请联系管理员', req, 500)
 
     const wxRes = await fetch(
       `https://api.weixin.qq.com/sns/jscode2session?appid=${APP_ID}&secret=${APP_SECRET}&js_code=${code}&grant_type=authorization_code`
     )
     const wxData = await wxRes.json()
 
-    if (wxData.errcode) return err(`微信接口错误: ${wxData.errmsg}`, 500)
+    if (wxData.errcode) return err(`微信接口错误: ${wxData.errmsg}`, req, 500)
 
     const { openid } = wxData
     const email = `${openid}@wechat.login`
@@ -58,7 +57,7 @@ Deno.serve(async (req) => {
       user_metadata: { from: 'wechat', openid },
     })
     if (createError && !createError.message.includes('already been registered')) {
-      return err(createError.message, 500)
+      return err(createError.message, req, 500)
     }
 
     const { data: magicLinkData, error: magicLinkError } =
@@ -68,18 +67,18 @@ Deno.serve(async (req) => {
         options: { data: { from: 'wechat', openid } },
       })
 
-    if (magicLinkError) return err(magicLinkError.message, 500)
+    if (magicLinkError) return err(magicLinkError.message, req, 500)
 
     const hashedToken = magicLinkData?.properties?.hashed_token ?? ''
-    if (!hashedToken) return err('无法生成token', 500)
+    if (!hashedToken) return err('无法生成token', req, 500)
 
     return ok({
       token: hashedToken,
       verification_type: magicLinkData?.properties?.verification_type ?? 'email',
       openid,
-    })
+    }, req)
   } catch (error) {
     console.error('[wechat-login] 错误:', error)
-    return err(error.message, 500)
+    return err(error instanceof Error ? error.message : String(error), req, 500)
   }
 })

@@ -1,16 +1,23 @@
-import { corsHeaders } from '../_shared/cors.ts'
+import { getCorsHeaders } from '../_shared/cors.ts'
+import { requireAuth } from '../_shared/auth.ts'
 
 Deno.serve(async (req) => {
+  const cors = getCorsHeaders(req)
+
   if (req.method === 'OPTIONS') {
-    return new Response(null, { headers: corsHeaders })
+    return new Response(null, { headers: cors })
   }
+
+  // JWT 鉴权
+  const authResult = await requireAuth(req)
+  if (authResult instanceof Response) return authResult
 
   try {
     const amapKey = Deno.env.get('AMAP_KEY')
     if (!amapKey) {
       return new Response(
         JSON.stringify({ error: '服务配置错误' }),
-        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        { status: 500, headers: { ...cors, 'Content-Type': 'application/json' } }
       )
     }
 
@@ -20,7 +27,7 @@ Deno.serve(async (req) => {
     if (!address) {
       return new Response(
         JSON.stringify({ error: 'address 为必填参数' }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } }
       )
     }
 
@@ -35,19 +42,19 @@ Deno.serve(async (req) => {
     if (!upstream.ok) {
       return new Response(
         JSON.stringify({ error: `上游服务错误: ${upstream.status}` }),
-        { status: 502, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        { status: 502, headers: { ...cors, 'Content-Type': 'application/json' } }
       )
     }
 
     const data = await upstream.json()
     return new Response(JSON.stringify(data), {
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      headers: { ...cors, 'Content-Type': 'application/json' },
     })
   } catch (err) {
     console.error('geocoding 错误:', err)
     return new Response(
       JSON.stringify({ error: '地理编码服务异常，请稍后重试' }),
-      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      { status: 500, headers: { ...cors, 'Content-Type': 'application/json' } }
     )
   }
 })

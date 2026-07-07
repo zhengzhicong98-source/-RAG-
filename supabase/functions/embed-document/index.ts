@@ -1,5 +1,5 @@
 import { createClient } from 'jsr:@supabase/supabase-js@2'
-import { corsHeaders } from '../_shared/cors.ts'
+import { getCorsHeaders } from '../_shared/cors.ts'
 
 const EMBED_API = 'https://open.bigmodel.cn/api/paas/v4/embeddings'
 
@@ -39,8 +39,10 @@ async function getEmbedding(text: string, apiKey: string): Promise<number[]> {
 }
 
 Deno.serve(async (req) => {
+  const cors = getCorsHeaders(req)
+
   if (req.method === 'OPTIONS') {
-    return new Response(null, { headers: corsHeaders })
+    return new Response(null, { headers: cors })
   }
 
   try {
@@ -49,7 +51,7 @@ Deno.serve(async (req) => {
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
       return new Response(
         JSON.stringify({ error: '请先登录', code: 'UNAUTHORIZED' }),
-        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        { status: 401, headers: { ...cors, 'Content-Type': 'application/json' } }
       )
     }
     const token = authHeader.replace('Bearer ', '')
@@ -60,7 +62,7 @@ Deno.serve(async (req) => {
     if (authError || !user) {
       return new Response(
         JSON.stringify({ error: '认证失败，请重新登录', code: 'AUTH_FAILED' }),
-        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        { status: 401, headers: { ...cors, 'Content-Type': 'application/json' } }
       )
     }
 
@@ -69,7 +71,7 @@ Deno.serve(async (req) => {
     if (!apiKey) {
       return new Response(
         JSON.stringify({ error: '服务配置错误' }),
-        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        { status: 500, headers: { ...cors, 'Content-Type': 'application/json' } }
       )
     }
 
@@ -91,14 +93,14 @@ Deno.serve(async (req) => {
       if (!id) {
         return new Response(
           JSON.stringify({ error: '缺少文档 ID' }),
-          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } }
         )
       }
       const { error } = await supabase.from('legal_knowledge').delete().eq('id', id)
       if (error) throw error
       return new Response(
         JSON.stringify({ success: true }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        { headers: { ...cors, 'Content-Type': 'application/json' } }
       )
     }
 
@@ -135,7 +137,7 @@ Deno.serve(async (req) => {
 
       return new Response(
         JSON.stringify({ docs }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        { headers: { ...cors, 'Content-Type': 'application/json' } }
       )
     }
 
@@ -148,7 +150,7 @@ Deno.serve(async (req) => {
       if (!id || !content) {
         return new Response(
           JSON.stringify({ error: '缺少必要字段 id 或 content' }),
-          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } }
         )
       }
 
@@ -164,7 +166,7 @@ Deno.serve(async (req) => {
 
       return new Response(
         JSON.stringify({ success: true, id }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        { headers: { ...cors, 'Content-Type': 'application/json' } }
       )
     }
 
@@ -177,7 +179,7 @@ Deno.serve(async (req) => {
     if (!title || !content) {
       return new Response(
         JSON.stringify({ error: '标题和内容不能为空' }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } }
       )
     }
 
@@ -244,14 +246,14 @@ Deno.serve(async (req) => {
 
     return new Response(
       JSON.stringify({ success: true, inserted_count: inserted.length, ids: inserted }),
-      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      { headers: { ...cors, 'Content-Type': 'application/json' } }
     )
 
   } catch (error) {
     console.error('embed-document 错误:', error)
     return new Response(
       JSON.stringify({ error: '服务异常，请稍后重试' }),
-      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      { status: 500, headers: { ...cors, 'Content-Type': 'application/json' } }
     )
   }
 })

@@ -1,4 +1,5 @@
-import { corsHeaders } from '../_shared/cors.ts'
+import { getCorsHeaders } from '../_shared/cors.ts'
+import { requireAuth } from '../_shared/auth.ts'
 
 const TYPE_MAP: Record<string, string> = {
   driving: '0',
@@ -18,16 +19,22 @@ function fmtDuration(seconds: number) {
 }
 
 Deno.serve(async (req) => {
+  const cors = getCorsHeaders(req)
+
   if (req.method === 'OPTIONS') {
-    return new Response(null, { headers: corsHeaders })
+    return new Response(null, { headers: cors })
   }
+
+  // JWT 鉴权
+  const authResult = await requireAuth(req)
+  if (authResult instanceof Response) return authResult
 
   try {
     const amapKey = Deno.env.get('AMAP_KEY')
     if (!amapKey) {
       return new Response(
         JSON.stringify({ error: '服务配置错误' }),
-        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        { status: 500, headers: { ...cors, 'Content-Type': 'application/json' } }
       )
     }
 
@@ -37,19 +44,19 @@ Deno.serve(async (req) => {
     if (!TYPE_MAP[mode]) {
       return new Response(
         JSON.stringify({ error: `无效的出行模式：${mode}，支持 driving/riding/walking` }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } }
       )
     }
     if (!Array.isArray(origins) || origins.length === 0) {
       return new Response(
         JSON.stringify({ error: 'origins 必须为非空数组' }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } }
       )
     }
     if (!Array.isArray(destinations) || destinations.length === 0) {
       return new Response(
         JSON.stringify({ error: 'destinations 必须为非空数组' }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } }
       )
     }
 
@@ -75,7 +82,7 @@ Deno.serve(async (req) => {
     if (!upstream.ok) {
       return new Response(
         JSON.stringify({ error: `上游服务错误: ${upstream.status}` }),
-        { status: 502, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        { status: 502, headers: { ...cors, 'Content-Type': 'application/json' } }
       )
     }
 
@@ -83,7 +90,7 @@ Deno.serve(async (req) => {
     if (data.status !== '1' || !Array.isArray(data.results)) {
       return new Response(
         JSON.stringify({ status: 1, result: [], error: data.info || '上游算路失败' }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        { headers: { ...cors, 'Content-Type': 'application/json' } }
       )
     }
 
@@ -95,13 +102,13 @@ Deno.serve(async (req) => {
       }))
 
     return new Response(JSON.stringify({ status: 0, result }), {
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      headers: { ...cors, 'Content-Type': 'application/json' },
     })
   } catch (err) {
     console.error('route-matrix 错误:', err)
     return new Response(
       JSON.stringify({ error: '批量算路服务异常，请稍后重试' }),
-      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      { status: 500, headers: { ...cors, 'Content-Type': 'application/json' } }
     )
   }
 })

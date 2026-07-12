@@ -324,6 +324,8 @@ export async function logAiCall(params: {
   ragHitCount: number
   success: boolean
   errorMessage?: string
+  promptText?: string      // 用户提问原文（完整）
+  responseText?: string    // AI 回答原文（完整）
 }) {
   const tokenEstimate = Math.ceil((params.promptLength + params.responseLength) / 4)
   const { error } = await supabase.from('ai_call_logs').insert({
@@ -338,6 +340,8 @@ export async function logAiCall(params: {
     rag_hit_count: params.ragHitCount,
     success: params.success,
     error_message: params.errorMessage || null,
+    prompt_text: params.promptText || null,
+    response_text: params.responseText || null,
   })
   return { error }
 }
@@ -362,7 +366,8 @@ export async function getConsultStats(userId: string) {
 export async function getAdminStats() {
   const [{ data: consultData }, { data: logData }] = await Promise.all([
     supabase.from('consult_history').select('feedback, response_time_ms, rag_used'),
-    supabase.from('ai_call_logs').select('*').order('created_at', { ascending: false }).limit(20),
+    // 走 ai_call_logs_safe 视图：admin 才能看到 prompt_text/response_text，普通用户为 null
+    supabase.from('ai_call_logs_safe').select('*').order('created_at', { ascending: false }).limit(20),
   ])
 
   const total = consultData?.length || 0
@@ -391,6 +396,8 @@ export async function getAdminStats() {
       success: boolean
       error_message: string | null
       created_at: string
+      prompt_text: string | null
+      response_text: string | null
     }>,
   }
 }
@@ -665,4 +672,28 @@ export async function getRecentTraces(limit = 20) {
   return Array.from(traceMap.values())
     .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
     .slice(0, limit)
+}
+
+// ==================== 回答质量评分 ====================
+
+export interface QualityStats {
+  total_evaluated: number
+  avg_relevance: number
+  avg_accuracy: number
+  avg_completeness: number
+  avg_helpfulness: number
+  avg_overall: number
+}
+
+/** 获取 AI 回答质量评分聚合统计（管理员看板用） */
+export async function getQualityStats(): Promise<QualityStats> {
+  const { data } = await supabase.from('quality_stats').select('*').single()
+  return (data as QualityStats) || {
+    total_evaluated: 0,
+    avg_relevance: 0,
+    avg_accuracy: 0,
+    avg_completeness: 0,
+    avg_helpfulness: 0,
+    avg_overall: 0,
+  }
 }

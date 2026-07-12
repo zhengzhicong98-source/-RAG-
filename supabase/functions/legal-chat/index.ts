@@ -353,6 +353,70 @@ Deno.serve(async (req) => {
       return err('您的问题包含不当内容，请重新描述', req, 400)
     }
 
+    // ========== evaluate 模式：AI 回答质量多维度评分 ==========
+    // 不走 RAG，不走系统 prompt，独立走一次评估 LLM 调用
+    if (mode === 'evaluate') {
+      const answerToEvaluate: string = body.answer_to_evaluate ?? ''
+      const userQuestion = messages[0]?.content || ''
+      if (!answerToEvaluate) return err('缺少 answer_to_evaluate', req, 400)
+
+      const evalPrompt = `你是一个法律回答质量评估专家。请对以下法律咨询的回答进行评分。
+
+用户问题：${userQuestion}
+
+AI回答：${answerToEvaluate}
+
+请从以下四个维度评分（0到1的小数，精确到两位），并返回纯 JSON 格式，不要有任何其他文字：
+{
+  "relevance": 0.xx,      // 回答与问题的相关程度
+  "accuracy": 0.xx,       // 引用法条的准确性（没有引用法条给0.5）
+  "completeness": 0.xx,   // 回答是否完整覆盖了问题的各个方面
+  "helpfulness": 0.xx,    // 对提问者的实际帮助程度
+  "overall": 0.xx         // 综合评分
+}`
+
+      const modelName = Deno.env.get('CHAT_MODEL') || 'glm-4-flash'
+      const evalCtrl = new AbortController()
+      const evalTimer = setTimeout(() => evalCtrl.abort(), 15000)
+      let evalRes: Response
+      try {
+        try {
+          evalRes = await fetch(TEXT_API, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${apiKey}`,
+            },
+            body: JSON.stringify({
+              model: modelName,
+              messages: [{ role: 'user', content: evalPrompt }],
+              stream: false,
+            }),
+            signal: evalCtrl.signal,
+          })
+        } finally {
+          clearTimeout(evalTimer)
+        }
+      } catch (fetchErr) {
+        console.error('[legal-chat/evaluate] 调用失败:', fetchErr)
+        return err('评估失败', req, 500)
+      }
+
+      if (!evalRes.ok) {
+        console.error(`[legal-chat/evaluate] 返回非200: ${evalRes.status}`)
+        return err('评估失败', req, 500)
+      }
+
+      const evalData = await evalRes.json()
+      const content: string = evalData?.choices?.[0]?.message?.content || ''
+      try {
+        const scores = JSON.parse(content.replace(/```json|```/g, '').trim())
+        return ok({ scores, raw: content }, req)
+      } catch {
+        return ok({ scores: null, raw: content }, req)
+      }
+    }
+
     // 仅在法律咨询模式下执行 RAG 检索
     let ragContext = ''
     let legalRefs: { id: string; title: string; source: string; content: string; similarity: number }[] = []

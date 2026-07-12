@@ -19,3 +19,25 @@ jobs:
       - run: pnpm lint
       - run: pnpm test
       - run: pnpm build:weapp
+
+      # RAG 回归评估：只在 master 分支 push 时跑（PR 跳过，避免消耗智谱 API 配额 + 泄露 secret）
+      # 首次接入允许失败，跑稳后把 continue-on-error 改成 false 即可
+      - name: RAG Evaluation (33-query regression)
+        if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+        run: pnpm eval:ci
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          TARO_APP_SUPABASE_URL: ${{ secrets.TARO_APP_SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          ZHIPU_API_KEY: ${{ secrets.ZHIPU_API_KEY }}
+        continue-on-error: true   # 首次接入不阻塞 CI，跑稳后改为 false
+
+      # 上传评估报告（无论成功失败都传，便于回看趋势）
+      - name: Upload eval report
+        if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+        uses: actions/upload-artifact@v4
+        with:
+          name: rag-eval-report
+          path: data/eval/latest-report.json
+          retention-days: 30
+        continue-on-error: true

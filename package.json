@@ -23,7 +23,8 @@
     "lint": "./scripts/runLint.sh",
     "seed": "node scripts/seed-knowledge.mjs",
     "seed:dry-run": "node scripts/seed-knowledge.mjs --dry-run",
-    "eval:rag": "node scripts/eval-rag.mjs"
+    "eval:rag": "node scripts/eval-rag.mjs",
+    "eval:ci": "node scripts/eval-rag.mjs --fail-under 0.70"
   },
   "browserslist": [
     "last 5 years",

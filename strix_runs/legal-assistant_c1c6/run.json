@@ -1,0 +1,51 @@
+{
+  "run_id": "legal-assistant_c1c6",
+  "run_name": "legal-assistant_c1c6",
+  "start_time": "2026-07-05T04:02:26.469927+00:00",
+  "end_time": "2026-07-05T04:04:06.071124+00:00",
+  "status": "failed",
+  "targets_info": [
+    {
+      "type": "local_code",
+      "details": {
+        "target_path": "/mnt/d/桌面/legal-assistant",
+        "workspace_subdir": "legal-assistant"
+      },
+      "original": "/mnt/d/桌面/legal-assistant"
+    }
+  ],
+  "llm_usage": {
+    "requests": 0,
+    "input_tokens": 0,
+    "input_tokens_details": [
+      {
+        "cached_tokens": 0
+      }
+    ],
+    "output_tokens": 0,
+    "output_tokens_details": [
+      {
+        "reasoning_tokens": 0
+      }
+    ],
+    "total_tokens": 0,
+    "request_usage_entries": [],
+    "cost": 0.0,
+    "agents": []
+  },
+  "scan_mode": "deep",
+  "instruction": "",
+  "non_interactive": false,
+  "local_sources": [
+    {
+      "source_path": "/mnt/d/桌面/legal-assistant",
+      "workspace_subdir": "legal-assistant"
+    }
+  ],
+  "diff_scope": {
+    "active": false,
+    "mode": "auto"
+  },
+  "scope_mode": "auto",
+  "diff_base": null
+}

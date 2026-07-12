@@ -6,6 +6,7 @@ import { generateTraceId, Span } from '@/utils/tracer'
 import { useAuth } from '@/contexts/AuthContext'
 import { parseReply } from '@/utils/parseReply'
 import { checkFrontendInput } from '@/utils/contentFilter'
+import { evaluateAnswerQuality } from '@/utils/qualityEval'
 import type { ChatMessage } from '@/db/types'
 
 const QUICK_QUESTIONS = [
@@ -457,6 +458,8 @@ export default function Chat() {
                 }
                 return updated
               })
+              // 异步触发多维度质量评估（不阻塞主流程）
+              evaluateAnswerQuality(text.trim(), fullContent, historyId, user.id).catch(() => {})
             }
           } catch { console.error('[consult] save history failed') }
           // 保存 RAG 评估记录
@@ -481,6 +484,8 @@ export default function Chat() {
             ragUsed,
             ragHitCount: ragUsed ? 1 : 0,
             success: true,
+            promptText: text.trim(),           // 用户提问原文
+            responseText: fullContent,          // AI 回答原文
           }).catch(() => {})
           frontendSpan.finish('ok', { message_length: text.length, response_length: fullContent.length }).catch(() => {})
         }
@@ -529,6 +534,8 @@ export default function Chat() {
               }
               return updated
             })
+            // 异步触发多维度质量评估（不阻塞主流程）
+            evaluateAnswerQuality(text.trim(), aiContent, historyId, user.id).catch(() => {})
           }
         } catch { console.error('[consult] save history failed (weapp)') }
         logAiCall({
@@ -541,6 +548,8 @@ export default function Chat() {
           ragUsed,
           ragHitCount: ragUsed ? 1 : 0,
           success: true,
+          promptText: text.trim(),           // 用户提问原文
+          responseText: aiContent,            // AI 回答原文
         }).catch(() => {})
       }
     }

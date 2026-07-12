@@ -67,6 +67,8 @@ const args = {
   tag: pickArg('--tag'),
   diff: pickArg('--diff'),
   minSimilarity: Number(pickArg('--min-similarity')) || 0.1,
+  // CI 门禁：Top-3 命中率低于该值则以 exit 1 结束（0-1 小数，如 0.70）
+  failUnder: pickArg('--fail-under') !== null ? Number(pickArg('--fail-under')) : null,
 }
 function pickArg(name) {
   const i = argv.indexOf(name)
@@ -405,6 +407,17 @@ async function main() {
     console.log(`  Top-3 命中: ${(base.metrics.hit3Rate * 100).toFixed(1)}% → ${(report.metrics.hit3Rate * 100).toFixed(1)}%  (${delta(report.metrics.hit3Rate, base.metrics.hit3Rate)})`)
     console.log(`  MRR       : ${base.metrics.mrr.toFixed(3)} → ${report.metrics.mrr.toFixed(3)}`)
     console.log(`  平均相似度: ${base.metrics.avgTop1Sim.toFixed(3)} → ${report.metrics.avgTop1Sim.toFixed(3)}`)
+  }
+
+  // ---- CI 门禁：Top-3 命中率阈值 ----
+  if (args.failUnder !== null && !Number.isNaN(args.failUnder)) {
+    const top3Rate = report.metrics.hit3Rate
+    if (top3Rate < args.failUnder) {
+      log.err(`🔴 Top-3 命中率 ${(top3Rate * 100).toFixed(1)}% 低于阈值 ${(args.failUnder * 100).toFixed(1)}%，CI 失败！`)
+      process.exit(1)
+    } else {
+      log.ok(`🟢 Top-3 命中率 ${(top3Rate * 100).toFixed(1)}% 达标（阈值 ${(args.failUnder * 100).toFixed(1)}%）`)
+    }
   }
 }
 

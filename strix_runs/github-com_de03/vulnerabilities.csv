@@ -1,0 +1,6 @@
+id,title,severity,timestamp,file
+vuln-0001,Missing Authorization in embed-document Edge Function,HIGH,2026-07-12 09:57:49 UTC,vulnerabilities/vuln-0001.md
+vuln-0002,Overly Permissive RLS Policy - quality_scores INSERT Allows Anonymous Writes,MEDIUM,2026-07-12 09:58:09 UTC,vulnerabilities/vuln-0002.md
+vuln-0003,Overly Permissive RLS Policy - trace_logs INSERT Allows Anonymous Writes,MEDIUM,2026-07-12 09:58:11 UTC,vulnerabilities/vuln-0003.md
+vuln-0004,Anonymous File Upload to contracts Storage Bucket,MEDIUM,2026-07-12 09:58:30 UTC,vulnerabilities/vuln-0004.md
+vuln-0005,Overly Permissive RLS Policy - ai_call_logs INSERT via NULL user_id,MEDIUM,2026-07-12 09:58:32 UTC,vulnerabilities/vuln-0005.md

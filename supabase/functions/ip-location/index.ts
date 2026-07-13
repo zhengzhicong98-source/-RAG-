@@ -1,5 +1,4 @@
 import { getCorsHeaders } from '../_shared/cors.ts'
-import { requireAuth } from '../_shared/auth.ts'
 
 Deno.serve(async (req) => {
   const cors = getCorsHeaders(req)
@@ -8,9 +7,7 @@ Deno.serve(async (req) => {
     return new Response(null, { headers: cors })
   }
 
-  // JWT 鉴权
-  const authResult = await requireAuth(req)
-  if (authResult instanceof Response) return authResult
+  // BUG FIX [2026-07-13]: 移除 requireAuth，IP 定位为公开只读地理接口，匿名用户应可访问
 
   try {
     const amapKey = Deno.env.get('AMAP_KEY')

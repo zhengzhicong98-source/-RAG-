@@ -1,4 +1,5 @@
 import Taro from '@tarojs/taro'
+import { supabase } from '@/client/supabase'
 
 interface CallEdgeFunctionOptions {
   body?: unknown
@@ -27,35 +28,53 @@ export function callEdgeFunction<T = unknown>(
   const { body, method = 'POST', headers = {}, timeout = 30000 } = options
   const url = `${process.env.TARO_APP_SUPABASE_URL}/functions/v1/${functionName}`
   const anonKey = process.env.TARO_APP_SUPABASE_ANON_KEY || ''
-  const reqHeaders: Record<string, string> = {
-    'Content-Type': 'application/json',
-    'Authorization': `Bearer ${anonKey}`,
-    'apikey': anonKey,
-    ...headers,
+
+  // BUG FIX 2026-07-13: 已登录用户改用 session.access_token 作为 Bearer，
+  // 匿名用户回退到 anon key；apikey header 始终保持 anon key（Supabase 网关路由用）。
+  // 修复所有 requireAuth 的 Edge Function（legal-chat/ip-location/reverse-geocoding 等）
+  // 对已登录用户仍返回 401 的问题。
+  const buildHeaders = async (): Promise<Record<string, string>> => {
+    let accessToken: string | undefined
+    try {
+      const { data } = await supabase.auth.getSession()
+      accessToken = data?.session?.access_token
+    } catch {
+      // getSession 抛异常时静默回退到 anon key，避免打断请求
+      accessToken = undefined
+    }
+    return {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${accessToken ?? anonKey}`,
+      'apikey': anonKey,
+      ...headers,
+    }
   }
+
   // BUG FIX 2026/06/22: 修复双重序列化问题，H5 用 JSON 字符串，微信小程序用原始对象
   const reqBodyForFetch = body !== undefined ? JSON.stringify(body) : undefined;
   const reqBodyForTaro = body; // Taro.request 会自动序列化，不需要手动 JSON.stringify
 
   // H5（浏览器）环境：直接用原生 fetch，避免 Taro.request 在 H5 下 fail 回调异常
   if (Taro.getEnv() === Taro.ENV_TYPE.WEB) {
-    return fetch(url, { method, headers: reqHeaders, body: reqBodyForFetch })
-      .then(async (res) => {
-        const parsed = await res.json().catch(() => null)
-        if (res.ok) return { data: parsed as T, error: null }
-        const msg = (parsed as Record<string, unknown>)?.error
-          || (parsed as Record<string, unknown>)?.message
-          || `HTTP ${res.status}`
-        return { data: null, error: { message: String(msg) } }
-      })
-      .catch((err: unknown) => ({
-        data: null,
-        error: { message: (err as Error)?.message || '网络请求失败' },
-      }))
+    return buildHeaders().then((reqHeaders) =>
+      fetch(url, { method, headers: reqHeaders, body: reqBodyForFetch })
+        .then(async (res) => {
+          const parsed = await res.json().catch(() => null)
+          if (res.ok) return { data: parsed as T, error: null }
+          const msg = (parsed as Record<string, unknown>)?.error
+            || (parsed as Record<string, unknown>)?.message
+            || `HTTP ${res.status}`
+          return { data: null, error: { message: String(msg) } }
+        })
+        .catch((err: unknown) => ({
+          data: null,
+          error: { message: (err as Error)?.message || '网络请求失败' },
+        }))
+    )
   }
 
   // WeChat 小程序环境：使用 Taro.request，避免 customFetch 的 body 序列化问题
-  return new Promise((resolve) => {
+  return buildHeaders().then((reqHeaders) => new Promise<CallEdgeFunctionResult<T>>((resolve) => {
     Taro.request({
       url,
       method,
@@ -78,5 +97,5 @@ export function callEdgeFunction<T = unknown>(
         resolve({ data: null, error: { message: err.errMsg || '网络请求失败' } } as CallEdgeFunctionResult<T>)
       },
     })
-  })
+  }))
 }

@@ -10,6 +10,18 @@ vi.mock('@tarojs/taro', () => ({
   },
 }))
 
+// Mock supabase client：避免测试环境加载真实 createClient (它在模块加载时
+// 会检查 supabaseUrl 是否存在, 而 beforeEach 里 stub process.env 太晚)。
+// getSession 默认返回 null session, 触发 callEdgeFunction 内 anon key fallback,
+// 与本文件测试关注的 HTTP 层行为无冲突。
+vi.mock('@/client/supabase', () => ({
+  supabase: {
+    auth: {
+      getSession: vi.fn().mockResolvedValue({ data: { session: null }, error: null }),
+    },
+  },
+}))
+
 describe('callEdgeFunction (H5)', () => {
   beforeEach(() => {
     vi.stubGlobal('fetch', vi.fn())

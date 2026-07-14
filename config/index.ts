@@ -11,6 +11,37 @@ import prodConfig from './prod'
 const base = String(process.argv[process.argv.length - 1])
 const publicPath = process.env.PUBLIC_PATH || (base.startsWith('http') ? base : '/')
 
+/**
+ * BUG FIX [2026-07-14]: Taro 4.1.10 @tarojs/vite-runner 在 H5 生产构建时,
+ * 会把 tabBar iconPath 硬编码为 `/static/images/{basename}`,没有读取 publicPath,
+ * 导致部署到 GitHub Pages 等带子路径的场景下图标 404。
+ * 上游 issue: https://github.com/NervJS/taro/issues/18324
+ *
+ * Workaround: 生产构建 bundle 生成阶段, 扫描所有 chunk code,
+ * 把字符串引号内的 `/static/images/` 替换为 `<publicPath>/static/images/`。
+ * 仅在 h5 生产构建启用, 且当 publicPath 有实际前缀时才替换。
+ */
+function fixTabbarIconPublicPath(rawPublicPath: string): Plugin {
+  // 去掉尾斜杠, 得到诸如 `/legal-assistant`
+  const prefix = rawPublicPath.replace(/\/+$/, '')
+  return {
+    name: 'fix-tabbar-icon-public-path',
+    apply: 'build',
+    generateBundle(_options, bundle) {
+      // publicPath 为根路径或空时无需替换, 早退出
+      if (!prefix) return
+      const pattern = /(['"`])\/static\/images\//g
+      const replacement = `$1${prefix}/static/images/`
+      for (const fileName of Object.keys(bundle)) {
+        const file = bundle[fileName]
+        if (file.type === 'chunk' && typeof file.code === 'string' && file.code.includes('/static/images/')) {
+          file.code = file.code.replace(pattern, replacement)
+        }
+      }
+    }
+  }
+}
+
 // https://taro-docs.jd.com/docs/next/config#defineconfig-辅助函数
 export default defineConfig<'vite'>(async (merge) => {
   const baseConfig: UserConfigExport<'vite'> = {
@@ -74,7 +105,9 @@ export default defineConfig<'vite'>(async (merge) => {
           disabled: process.env.TARO_ENV === 'h5',
           // 由于 taro vite 默认会移除所有的 tailwindcss css 变量，所以一定要开启这个配置，进行css 变量的重新注入
           injectAdditionalCssVarScope: true
-        })
+        }),
+        // 仅 H5 构建注入 tabBar 图标路径修复插件, 不影响 mini 构建
+        ...(process.env.TARO_ENV === 'h5' ? [fixTabbarIconPublicPath(publicPath)] : [])
       ] as Plugin[]
     },
     mini: {
